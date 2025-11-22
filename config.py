@@ -25,7 +25,7 @@ class ControlToggles:
 @dataclass
 class ControlGains:
     Kp_x: np.ndarray = field(default_factory=lambda: np.array([800.0, 800.0]))
-    Kff_x: np.ndarray = field(default_factory=lambda: np.array([1.0, 1.0]))
+    Kff_x: np.ndarray = field(default_factory=lambda: np.array([1.5, 1.5]))
     Kp_q: np.ndarray = field(default_factory=lambda: np.array([14.0, 12.0]))
     Kd_q: np.ndarray = field(default_factory=lambda: np.array([1.6, 1.4]))
 
