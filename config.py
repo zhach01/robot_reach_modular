@@ -24,10 +24,32 @@ class ControlToggles:
 
 @dataclass
 class ControlGains:
+    # PD/IF controller gains
     Kp_x: np.ndarray = field(default_factory=lambda: np.array([800.0, 800.0]))
     Kff_x: np.ndarray = field(default_factory=lambda: np.array([1.5, 1.5]))
     Kp_q: np.ndarray = field(default_factory=lambda: np.array([14.0, 12.0]))
     Kd_q: np.ndarray = field(default_factory=lambda: np.array([1.6, 1.4]))
+
+    # Energy tank controller gains (task-space)
+    # D0: passive damping matrix in task space (2x2, SPD)
+    D0: np.ndarray = field(
+        default_factory=lambda: np.diag([20.0, 20.0])
+    )
+
+    # K0: nominal stiffness matrix in task space (2x2, SPD)
+    K0: np.ndarray = field(
+        default_factory=lambda: np.diag([800.0, 800.0])
+    )
+
+    # KI: integral gain vector (per task dimension)
+    KI: np.ndarray = field(
+        default_factory=lambda: np.array([0.0, 0.0])
+    )
+
+    # Imax: integral windup limits per dimension
+    Imax: np.ndarray = field(
+        default_factory=lambda: np.array([0.05, 0.05])
+    )
 
 
 @dataclass

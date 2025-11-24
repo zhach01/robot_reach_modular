@@ -515,7 +515,7 @@ def manip_grad(env, q, qd, eps: float) -> Tensor:
 # Nullspace injection (Torch-only)
 # --------------------------------------------------------------------------- #
 
-def add_nullspace_manip(
+def add_nullspace_manip_(
     qdd_post: Tensor,
     env,
     q,
@@ -572,6 +572,187 @@ def add_nullspace_manip(
 
     return qdd_out, k_eff
 
+def add_nullspace_manip(
+    qdd_post: Tensor,
+    env,
+    q,
+    qd,
+    J_xy,  # unused, kept for API compatibility
+    P: KinGuardParams,
+    eta,
+):
+    """
+    Add manipulability-gradient-based nullspace term to qdd_post (Torch-only).
+
+    Parameters
+    ----------
+    qdd_post : Tensor
+        - (n,)   for unbatched
+        - (B,n)  for batched
+    env : Environment-like
+        Passed through to manip_grad (must expose skeleton as documented).
+    q, qd : Tensor or array-like
+        - (n,)   for unbatched
+        - (B,n)  for batched
+    J_xy : unused
+        Kept only for API compatibility with older code.
+    P : KinGuardParams
+        Contains k_manip, grad_eps, and enable_manip_nullspace.
+    eta : float or Tensor
+        - scalar / 0D tensor
+        - or (B,) tensor for batched case
+
+    Returns
+    -------
+    qdd_out : Tensor
+        - (n,)   for unbatched
+        - (B,n)  for batched
+    k_eff :
+        - float for unbatched (as before)
+        - (B,) Tensor for batched (per-sample effective gain)
+    """
+    qdd_post = torch.as_tensor(qdd_post)
+    device, dtype = qdd_post.device, qdd_post.dtype
+
+    # ------------------------------------------
+    # Early exit if manipulability disabled
+    # ------------------------------------------
+    if not P.enable_manip_nullspace:
+        if qdd_post.ndim == 1:
+            # unbatched: keep exact old behavior
+            if _DEBUG_MANIP:
+                print("[add_nullspace_manip] Manipulability nullspace disabled (unbatched).")
+            return qdd_post, 0.0
+        elif qdd_post.ndim == 2:
+            # batched: return zeros per batch
+            if _DEBUG_MANIP:
+                print("[add_nullspace_manip] Manipulability nullspace disabled (batched).")
+            B = qdd_post.shape[0]
+            k_eff_b = torch.zeros(B, device=device, dtype=dtype)
+            return qdd_post, k_eff_b
+        else:
+            raise ValueError(
+                f"add_nullspace_manip: qdd_post must be (n,) or (B,n), got {tuple(qdd_post.shape)}"
+            )
+
+    # ------------------------------------------
+    # Helper: normalize eta to a (B,) tensor
+    # ------------------------------------------
+    def _eta_to_batch_vec(eta_in, B_local: int) -> Tensor:
+        if isinstance(eta_in, Tensor):
+            e = eta_in.to(device=device, dtype=dtype)
+            if e.ndim == 0:
+                # scalar -> broadcast to (B,)
+                e = e.view(1).expand(B_local)
+            elif e.ndim == 1:
+                if e.shape[0] == 1 and B_local > 1:
+                    e = e.expand(B_local)
+                elif e.shape[0] != B_local:
+                    raise ValueError(
+                        f"add_nullspace_manip: eta batch {e.shape[0]} "
+                        f"!= B={B_local}"
+                    )
+            else:
+                # Collapse any extra dims to 1D
+                e = e.view(-1)
+                if e.shape[0] == 1 and B_local > 1:
+                    e = e.expand(B_local)
+                elif e.shape[0] != B_local:
+                    raise ValueError(
+                        f"add_nullspace_manip: eta batch {e.shape[0]} "
+                        f"!= B={B_local}"
+                    )
+        else:
+            # python scalar / float
+            e = torch.full(
+                (B_local,),
+                float(eta_in),
+                device=device,
+                dtype=dtype,
+            )
+        return e
+
+    # ------------------------------------------
+    # UNBATCHED CASE: qdd_post: (n,)
+    # ------------------------------------------
+    if qdd_post.ndim == 1:
+        # Effective gain (keep as plain float for logging, as before)
+        if isinstance(eta, Tensor):
+            e = eta.detach()
+            if e.numel() > 1:
+                e = e.view(-1)[0]
+            eta_val = float(e.cpu().item())
+        else:
+            eta_val = float(eta)
+
+        k_eff = P.k_manip * eta_val
+        if _DEBUG_MANIP:
+            print(f"[add_nullspace_manip] (unbatched) k_eff = {k_eff}")
+
+        g = manip_grad(env, q, qd, P.grad_eps)  # (n,)
+        g_t = torch.as_tensor(g, dtype=dtype, device=device)
+        qdd_out = qdd_post + k_eff * g_t
+        return qdd_out, k_eff
+
+    # ------------------------------------------
+    # BATCHED CASE: qdd_post: (B,n)
+    # ------------------------------------------
+    if qdd_post.ndim == 2:
+        B, n = qdd_post.shape
+
+        q_t = torch.as_tensor(q, dtype=dtype, device=device)
+        qd_t = torch.as_tensor(qd, dtype=dtype, device=device)
+
+        # Normalize q, qd to (B,n)
+        if q_t.ndim == 1:
+            q_t = q_t.unsqueeze(0).expand(B, -1)
+        if qd_t.ndim == 1:
+            qd_t = qd_t.unsqueeze(0).expand(B, -1)
+
+        if q_t.shape != (B, n):
+            raise ValueError(
+                f"add_nullspace_manip: q must be (B,n)={B,n}, got {tuple(q_t.shape)}"
+            )
+        if qd_t.shape != (B, n):
+            raise ValueError(
+                f"add_nullspace_manip: qd must be (B,n)={B,n}, got {tuple(qd_t.shape)}"
+            )
+
+        # Broadcast eta to (B,)
+        eta_b = _eta_to_batch_vec(eta, B)  # (B,)
+
+        qdd_list = []
+        k_eff_list = []
+
+        for b in range(B):
+            eta_val = float(eta_b[b].detach().cpu().item())
+            k_eff_b = P.k_manip * eta_val
+
+            if _DEBUG_MANIP:
+                print(f"[add_nullspace_manip] (batch {b}) k_eff = {k_eff_b}")
+
+            g_b = manip_grad(env, q_t[b], qd_t[b], P.grad_eps)  # (n,)
+            g_b = torch.as_tensor(g_b, dtype=dtype, device=device)
+
+            qdd_b = qdd_post[b] + k_eff_b * g_b  # (n,)
+            qdd_list.append(qdd_b)
+            k_eff_list.append(k_eff_b)
+
+        qdd_out = torch.stack(qdd_list, dim=0)  # (B,n)
+        k_eff_vec = torch.tensor(
+            k_eff_list,
+            device=device,
+            dtype=dtype,
+        )  # (B,)
+
+        return qdd_out, k_eff_vec
+
+    # ------------------------------------------
+    # Unsupported shape
+    # ------------------------------------------
+    raise ValueError(
+        f"add_nullspace_manip: qdd_post must be (n,) or (B,n), got {tuple(qdd_post.shape)}"
+    )
 
 # --------------------------------------------------------------------------- #
 # Tiny Torch-only smoke test

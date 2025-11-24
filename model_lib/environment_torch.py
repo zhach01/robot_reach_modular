@@ -313,7 +313,7 @@ class Environment(gym.Env):
 
     # -------------------- Gym API --------------------
 
-    def reset(
+    def reset_(
         self,
         *,
         seed: Optional[int] = None,
@@ -372,6 +372,112 @@ class Environment(gym.Env):
             "goal": self.goal,
         }
         return obs, info
+
+
+    def reset(
+        self,
+        *,
+        seed: Optional[int] = None,
+        options: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[Tensor, Dict[str, Any]]:
+        """
+        Reset the environment and effector.
+
+        options:
+          - batch_size: int (optional)
+          - joint_state: (B, 2*dof) or (2*dof,) or None
+          - deterministic: bool
+        """
+        # ------------------------------------------------------
+        # Seed effector RNG (if requested)
+        # ------------------------------------------------------
+        if seed is not None:
+            # Delegate seeding to effector; it manages a torch.Generator
+            self.effector.reset(seed=seed)
+
+        options = {} if options is None else options
+        batch_size: int = int(options.get("batch_size", 1))
+        joint_state = options.get("joint_state", None)
+        deterministic: bool = bool(options.get("deterministic", False))
+
+        # ------------------------------------------------------
+        # Infer batch_size from joint_state (if provided)
+        # ------------------------------------------------------
+        if joint_state is not None:
+            js = _as_2d(joint_state, device=self.device, dtype=self.dtype)
+            if js.shape[0] > 1:
+                batch_size = js.shape[0]
+        else:
+            # fall back to stored initial joint config (can be None)
+            joint_state = self.q_init
+
+        # ------------------------------------------------------
+        # Reset effector (this sets self.effector.states)
+        # ------------------------------------------------------
+        self.effector.reset(
+            options={"batch_size": batch_size, "joint_state": joint_state}
+        )
+
+        # 🔴 Important: from here on, trust the effector's batch size
+        joint = self.effector.states["joint"]
+        if joint.dim() != 2:
+            raise ValueError(
+                f"Effector joint state must be (B, state_dim), got {tuple(joint.shape)}"
+            )
+        batch_size = joint.shape[0]
+        print(f"[env_torch] reset with batch_size = {batch_size}")
+        # ------------------------------------------------------
+        # Goal defaults to origin (0, 0, ...) for each batch element
+        # ------------------------------------------------------
+        self.goal = torch.zeros(
+            (batch_size, self.effector.space_dim),
+            dtype=self.dtype,
+            device=self.device,
+        )
+
+        # ------------------------------------------------------
+        # Init action buffer and obs buffers
+        # ------------------------------------------------------
+        action0 = torch.zeros(
+            (batch_size, self.n_muscles),
+            dtype=self.dtype,
+            device=self.device,
+        )
+
+        # Fill proprioception / vision buffers with current measurements,
+        # replicated to full buffer length
+        self.obs_buffer["proprioception"] = [
+            self.get_proprioception()
+        ] * max(1, len(self.obs_buffer["proprioception"]))
+
+        self.obs_buffer["vision"] = [
+            self.get_vision()
+        ] * max(1, len(self.obs_buffer["vision"]))
+
+        # Past actions: all zeros at reset
+        self.obs_buffer["action"] = [action0] * self.action_frame_stacking
+
+        # Reset time
+        self.elapsed = 0.0
+
+        # ------------------------------------------------------
+        # Initial observation + info dict
+        # ------------------------------------------------------
+        obs = self.get_obs(deterministic=deterministic)
+        info = {
+            "states": self.effector.states,
+            "action": action0,
+            "noisy action": action0,
+            "goal": self.goal,
+        }
+        return obs, info
+
+
+
+
+
+
+
 
     def step(
         self,

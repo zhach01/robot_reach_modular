@@ -139,7 +139,6 @@ def get_Fmax_vec(
 # --------------------------------------------------------------------------- #
 # Active force from activation (batchable)
 # --------------------------------------------------------------------------- #
-
 def active_force_from_activation(a: Any, geom_lenvel: Any, muscle) -> Tensor:
     """
     Torch version of active_force_from_activation.
@@ -156,13 +155,13 @@ def active_force_from_activation(a: Any, geom_lenvel: Any, muscle) -> Tensor:
 
     muscle : Torch muscle object
         Must expose:
-            - state_name: list of state channel names
+            - state_name: list of state channel names (must contain "activation")
             - min_activation: float
-            - _integrate(dt, state, activation, geom_lenvel)
+            - _integrate(dt, state_derivative, muscle_state, geom_lenvel)
               with:
-                state: (B, C, M)
-                activation: (B,M)  (or compatible)
-                geom_lenvel: (B, 2, M)
+                state_derivative: (B, C, M)
+                muscle_state:     (B, C, M)
+                geom_lenvel:      (B, 2, M)
     """
     ref = _ref_tensor(a, geom_lenvel)
     if ref is None:
@@ -216,17 +215,28 @@ def active_force_from_activation(a: Any, geom_lenvel: Any, muscle) -> Tensor:
         )
 
     # State: (B, C, M) with C = len(state_name)
-    C = len(muscle.state_name)
+    names = muscle.state_name
+    C = len(names)
     state0 = torch.zeros((B, C, M), dtype=dtype, device=device)
 
-    # Activation: (B,M) – let the muscle implementation decide how to use it
-    act_b = a_b  # (B,M)
+    # Find activation channel and embed a in it
+    if "activation" not in names:
+        raise ValueError(
+            f"active_force_from_activation: muscle.state_name must contain 'activation', "
+            f"got {names}"
+        )
+    ia = names.index("activation")
+    # state0[:, ia, :] has shape (B,M)
+    state0[:, ia, :] = a_b
+
+    # Zero state derivative (dt=0 -> no evolution anyway)
+    dstate0 = torch.zeros_like(state0)
 
     # dt = 0.0 to evaluate instantaneous force contributions
-    out = muscle._integrate(0.0, state0, act_b, gl_b)  # expected (B, C, M)
+    # ✔ uses Muscles API: _integrate(dt, state_derivative, muscle_state, geom_lenvel)
+    out = muscle._integrate(0.0, dstate0, state0, gl_b)  # (B, C, M)
 
-    names = muscle.state_name
-    ia = names.index("activation")
+    # Read back activation, flce, fvce channels
     ifl = names.index("force-length CE")
     ifv = names.index("force-velocity CE")
 

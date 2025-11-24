@@ -326,6 +326,8 @@ class SimulatorTorch:
 
             diag = self.controller.compute(x_d, xd_d, xdd_d)
             act = diag["act"]
+            if k == 0:
+                print(f"[sim_torch] batch size = {act.shape[0]}")
 
             # optional debug
             if k in (0, 5, 20, 50, 100):
