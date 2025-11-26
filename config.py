@@ -5,7 +5,7 @@ import numpy as np
 @dataclass
 class PlantConfig:
     timestep: float = 0.002
-    damping: float = 0.10
+    damping: float = 2.0
     n_ministeps: int = 1
     integration_method: str = "Euler"
     max_ep_duration: float = 5.0
@@ -19,6 +19,7 @@ class ControlToggles:
     enable_inertia_comp: bool = True
     enable_gravity_comp: bool = False
     enable_velocity_comp: bool = True
+    enable_joint_damping: bool = True
     enable_joint_damping: bool = True
 
 

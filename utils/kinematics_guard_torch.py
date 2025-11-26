@@ -131,7 +131,7 @@ def _get_skeleton_from_env(env: Any):
 
 
 # --------------------------------------------------------------------------- #
-# Adaptive DLS pseudo-inverse (Torch-only)
+# Adaptive DLS pseudo-inverse (Torch-only) - FIXED VERSION
 # --------------------------------------------------------------------------- #
 
 def adaptive_dls_pinv(J_xy: Tensor, n: int, P: KinGuardParams):
@@ -157,8 +157,13 @@ def adaptive_dls_pinv(J_xy: Tensor, n: int, P: KinGuardParams):
     """
     J = torch.as_tensor(J_xy)
 
-    # Unbatched: (2, n)
+    # FIX: Handle different input shapes more robustly
     if J.ndim == 2:
+        # Unbatched: (2, n)
+        if J.shape[0] != 2:
+            raise ValueError(
+                f"adaptive_dls_pinv expects J_xy with shape (2,n), got {tuple(J.shape)}"
+            )
         s = torch.linalg.svdvals(J)       # (2,)
         smin = s.min()                    # scalar tensor
 
@@ -174,45 +179,54 @@ def adaptive_dls_pinv(J_xy: Tensor, n: int, P: KinGuardParams):
 
         return J_dls, smin, lamJ
 
-    # Batched: (B, 2, n)
-    if J.ndim != 3 or J.shape[1] != 2:
+    elif J.ndim == 3:
+        # Batched: (B, m, n) - we need to handle cases where m != 2
+        B, m, n_joints = J.shape
+        
+        # FIX: Extract only the first 2 rows for task space control
+        if m >= 2:
+            # Use first 2 rows for task space control
+            J_task = J[:, :2, :]  # (B, 2, n)
+        else:
+            raise ValueError(
+                f"adaptive_dls_pinv: J_xy must have at least 2 rows, got {m}"
+            )
+
+        J_dls_list = []
+        smins_list = []
+        lamJs_list = []
+
+        eye_n = torch.eye(n_joints, dtype=J.dtype, device=J.device)
+
+        for b in range(B):
+            Jb = J_task[b]  # (2, n)
+            s = torch.linalg.svdvals(Jb)
+            smin_b = s.min()
+
+            arg_b = P.k_sig * (smin_b - P.sigma_thresh_J)
+            lamJ_b = P.lam_min + (P.lam_max - P.lam_min) / (1.0 + torch.exp(arg_b))
+
+            JTJ_b = Jb.transpose(-1, -2) @ Jb  # (n, n)
+
+            J_dls_b = torch.linalg.solve(
+                JTJ_b + (lamJ_b ** 2) * eye_n,
+                Jb.transpose(-1, -2),
+            )  # (n, 2)
+
+            J_dls_list.append(J_dls_b)
+            smins_list.append(smin_b)
+            lamJs_list.append(lamJ_b)
+
+        J_dls_stack = torch.stack(J_dls_list, dim=0)       # (B, n, 2)
+        smins = torch.stack(smins_list, dim=0)             # (B,)
+        lamJs = torch.stack(lamJs_list, dim=0)             # (B,)
+
+        return J_dls_stack, smins, lamJs
+
+    else:
         raise ValueError(
-            f"adaptive_dls_pinv expects J_xy with shape (2,n) or (B,2,n), got {tuple(J.shape)}"
+            f"adaptive_dls_pinv expects J_xy with 2 or 3 dimensions, got {J.ndim}"
         )
-
-    B = J.shape[0]
-    J_dls_list = []
-    smins_list = []
-    lamJs_list = []
-
-    eye_n = None
-
-    for b in range(B):
-        Jb = J[b]  # (2, n)
-        s = torch.linalg.svdvals(Jb)
-        smin_b = s.min()
-
-        arg_b = P.k_sig * (smin_b - P.sigma_thresh_J)
-        lamJ_b = P.lam_min + (P.lam_max - P.lam_min) / (1.0 + torch.exp(arg_b))
-
-        JTJ_b = Jb.transpose(-1, -2) @ Jb  # (n, n)
-        if eye_n is None:
-            eye_n = torch.eye(n, dtype=Jb.dtype, device=Jb.device)
-
-        J_dls_b = torch.linalg.solve(
-            JTJ_b + (lamJ_b ** 2) * eye_n,
-            Jb.transpose(-1, -2),
-        )  # (n, 2)
-
-        J_dls_list.append(J_dls_b)
-        smins_list.append(smin_b)
-        lamJs_list.append(lamJ_b)
-
-    J_dls_stack = torch.stack(J_dls_list, dim=0)       # (B, n, 2)
-    smins = torch.stack(smins_list, dim=0)             # (B,)
-    lamJs = torch.stack(lamJs_list, dim=0)             # (B,)
-
-    return J_dls_stack, smins, lamJs
 
 
 # --------------------------------------------------------------------------- #
@@ -788,6 +802,15 @@ if __name__ == "__main__":
     print("  [batched] lamJ_b:", lamJ_b)
     print("  [batched] alpha_b:", a_b)
     print("  [batched] J_dls_b shape:", J_dls_b.shape)
+
+    # ---- Test DLS pinv with different input shapes ----
+    print("  Testing different input shapes...")
+    J_6x2 = torch.randn(1, 6, 2)  # Simulating the problematic input
+    try:
+        J_dls_6x2, smin_6x2, lamJ_6x2 = adaptive_dls_pinv(J_6x2, n=2, P=P)
+        print("  [6x2 input] Success! smin:", smin_6x2, "lamJ:", lamJ_6x2)
+    except Exception as e:
+        print("  [6x2 input] Failed as expected:", e)
 
     # ---- Manipulability gradient smoke (requires your Torch skeleton stack) ----
     try:

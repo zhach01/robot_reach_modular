@@ -10,7 +10,7 @@ Torch version of LogBuffer.
 
 - Internally uses Torch tensors for all logs (CPU by default).
 - Accepts NumPy or Torch arrays in `record`.
-- Computes link positions from 2-DoF arm geometry (l1, l2) in Torch
+- Computes link positions from 2-DoF arm geometry in Torch
   instead of calling forwardHTM_cached from the NumPy stack.
 
 Batch-safe:
@@ -197,18 +197,21 @@ class LogBufferTorch:
             self.condM_log[k] = float("inf")
 
         # --- link positions via 2-DoF planar geometry (log first sample) ---
-        # Assume env.skeleton is a 2-link planar arm with attributes l1, l2
         arm = env.skeleton
-        l1 = float(getattr(arm, "l1", 1.0))
-        l2 = float(getattr(arm, "l2", 1.0))
+        # Prefer physical link lengths L1/L2, fall back to legacy l1/l2 if present
+        l1 = float(getattr(arm, "L1", getattr(arm, "l1", 0.309)))
+        l2 = float(getattr(arm, "L2", getattr(arm, "l2", 0.333)))
 
+        # q is the 1D joint position vector we already extracted above
         q1, q2 = q[0], q[1]
         c1, s1 = torch.cos(q1), torch.sin(q1)
         c12, s12 = torch.cos(q1 + q2), torch.sin(q1 + q2)
 
-        base = torch.tensor([0.0, 0.0], device=self.device, dtype=self.dtype)
+        base = torch.zeros(2, device=self.device, dtype=self.dtype)
         joint1 = torch.stack([l1 * c1, l1 * s1])
-        joint2 = torch.stack([joint1[0] + l2 * c12, joint1[1] + l2 * s12])
+        joint2 = torch.stack(
+            [joint1[0] + l2 * c12, joint1[1] + l2 * s12]
+        )
 
         # fingertip from env.states["fingertip"] (B,2) or (B,>=2) -> take first batch
         ft = env.states.get("fingertip", None)
@@ -256,8 +259,9 @@ if __name__ == "__main__":
 
     class DummySkeleton:
         def __init__(self):
-            self.l1 = 0.3
-            self.l2 = 0.3
+            # mimic TwoDofArmT
+            self.L1 = 0.3
+            self.L2 = 0.3
 
     class DummyEnv:
         def __init__(self, B: int = 1):
