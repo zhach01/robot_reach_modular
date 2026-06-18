@@ -45,7 +45,7 @@ and returns a dict with the same keys as the NumPy tank controller.
 """
 
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Dict, Tuple
 
 import torch
@@ -161,6 +161,16 @@ class EnergyTankParams:
     E0: float = 0.08
     Emin: float = 1e-4
     Emax: float = 0.5
+
+    # Singularity safety: cond(J) blend to a joint-space fallback (same mechanism
+    # as the sliding-mode / PD-IF controllers), active only near the full-extension
+    # Jacobian singularity. Defense-in-depth alongside the tank's eta-gating.
+    enable_singularity_blend: bool = True
+    sing_cond_low: float = 20.0
+    sing_cond_high: float = 80.0
+    sing_elbow_min_rad: float = 0.0349  # ~2 deg
+    sing_Kp_js: Any = field(default_factory=lambda: [12.0, 10.0])
+    sing_Kd_js: Any = field(default_factory=lambda: [2.5, 2.0])
 
 
 # ---------------------------------------------------------------------------
@@ -684,6 +694,20 @@ class EnergyTankController:
         E_next = E + float(self.arm.dt) * (Pin - Pout)
         E_next = torch.clamp(E_next, float(self.p.Emin), float(self.p.Emax))
         self.E = E_next                                           # (B,)
+
+        # ---- singularity safety: cond(J) blend to joint-space fallback (batched) ----
+        if getattr(self.p, "enable_singularity_blend", True):
+            condJ = torch.linalg.cond(J_xy)                                   # (B,)
+            condJ = torch.where(torch.isfinite(condJ), condJ, torch.full_like(condJ, 1e9))
+            w_cr = torch.clamp((condJ - self.p.sing_cond_low) / (self.p.sing_cond_high - self.p.sing_cond_low), 0.0, 1.0)
+            w_eta = torch.clamp(1.0 - eta, 0.0, 1.0)
+            w = torch.clamp(torch.maximum(w_cr, 0.5 * w_eta), 0.0, 1.0)       # (B,)
+            q_star = qref.clone()
+            q_star[:, 1] = torch.clamp(q_star[:, 1], min=float(self.p.sing_elbow_min_rad))
+            Kp_js = _to_tensor_like(self.p.sing_Kp_js, q[0])
+            Kd_js = _to_tensor_like(self.p.sing_Kd_js, q[0])
+            tau_js = Kp_js * (q_star - q) - Kd_js * qd                        # (B,n)
+            tau_des = (1.0 - w).view(B, 1) * tau_des + w.view(B, 1) * tau_js
 
         # ------------------------------------------------------------------
         # Muscle geometry & forces (batched)

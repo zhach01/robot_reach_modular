@@ -31,7 +31,7 @@ Notes:
 from __future__ import annotations
 
 import numpy as np
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from utils.numpy.math_utils import matrix_sqrt_spd, matrix_isqrt_spd, matrix_sqrt_isqrt_spd
 from muscles.numpy.muscle_tools import (
@@ -77,6 +77,18 @@ def _decompose_parallel_perp(F: np.ndarray, v: np.ndarray, eps: float = 1e-12):
     alpha = float(F @ v) / nv2
     F_par = alpha * v
     return F_par, F - F_par
+
+
+def _safe_cond(A: np.ndarray, fallback: float = 1e9) -> float:
+    try:
+        c = float(np.linalg.cond(A))
+        return c if np.isfinite(c) else fallback
+    except Exception:
+        return fallback
+
+
+def _blend_weight_from_cond(cond_val: float, lo: float, hi: float) -> float:
+    return float(np.clip((cond_val - lo) / (hi - lo), 0.0, 1.0))
 
 
 def _tau_cap_from_muscles(R: np.ndarray, Fmax: np.ndarray, margin: float = 0.95):
@@ -235,6 +247,17 @@ class EnergyTankParams:
     # Torque feasibility clamp using muscle geometry (recommended ON)
     clamp_tau_to_muscles: bool = True
     tau_cap_margin: float = 0.95
+
+    # --- Singularity safety: cond(J) blend to a joint-space fallback (same as the
+    # sliding-mode / PD-IF controllers). Only active near the full-extension
+    # Jacobian singularity (w>0), where near-singularity safety overrides strict
+    # passivity (the q2 barrier already injects safety torque the same way). ---
+    enable_singularity_blend: bool = True
+    sing_cond_low: float = 20.0
+    sing_cond_high: float = 80.0
+    sing_elbow_min_rad: float = np.deg2rad(2.0)
+    sing_Kp_js: np.ndarray = field(default_factory=lambda: np.array([12.0, 10.0]))
+    sing_Kd_js: np.ndarray = field(default_factory=lambda: np.array([2.5, 2.0]))
 
     # Hard physiological torque clamp (Nm) (applied in addition to muscle clamp)
     clamp_tau_abs: bool = True
@@ -571,6 +594,19 @@ class EnergyTankController:
                     tau_barrier = np.zeros_like(tau_des)
                     tau_barrier[q2i] = tau2
                 tau_des = tau_des + tau_barrier
+
+        # ---- singularity safety: cond(J) blend to a joint-space fallback ----
+        # (same mechanism as the sliding-mode / PD-IF controllers). Active only
+        # near the full-extension Jacobian singularity (cond(R) is blind to it).
+        if getattr(self.p, "enable_singularity_blend", True):
+            condJ = _safe_cond(J_xy)
+            w_cr = _blend_weight_from_cond(condJ, self.p.sing_cond_low, self.p.sing_cond_high)
+            w_eta = float(np.clip(1.0 - float(eta), 0.0, 1.0))
+            w = float(np.clip(max(w_cr, 0.5 * w_eta), 0.0, 1.0))
+            q_star = self.qref.copy()
+            q_star[1] = max(float(q_star[1]), float(self.p.sing_elbow_min_rad))
+            tau_js = self.p.sing_Kp_js * (q_star - q) + self.p.sing_Kd_js * (-qd)
+            tau_des = (1.0 - w) * tau_des + w * tau_js
 
         # ---- torque feasibility clamps (muscle + absolute Nm limits) ----
         # Uses instantaneous muscle moment arms and Fmax.
