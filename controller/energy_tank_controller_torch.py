@@ -698,15 +698,16 @@ class EnergyTankController:
         R = geom[:, 2:2 + n, :]             # (B,n,M)
         M_muscles = int(R.shape[-1])
 
-        Fmax_vec = get_Fmax_vec(
-            self.env,
-            M_muscles,
-        ).to(device=q.device, dtype=q.dtype)  # (M,)
+        # Cache per-episode constants (Fmax + channel index) on first use.
+        if getattr(self, "_Fmax_cache", None) is None:
+            self._Fmax_cache = get_Fmax_vec(self.env, M_muscles).to(
+                device=q.device, dtype=q.dtype)  # (M,)
+            _names = list(getattr(self.env.muscle, "state_name", []))
+            self._idx_flpe = _names.index("force-length PE") if "force-length PE" in _names else -1
+        Fmax_vec = self._Fmax_cache
 
-        names = list(getattr(self.env.muscle, "state_name", []))
-        if "force-length PE" in names:
-            idx_flpe = names.index("force-length PE")
-            flpe = self.env.states["muscle"][:, idx_flpe, :]      # (B,M)
+        if self._idx_flpe >= 0:
+            flpe = self.env.states["muscle"][:, self._idx_flpe, :]      # (B,M)
         else:
             flpe = torch.zeros((B, M_muscles), device=q.device, dtype=q.dtype)
 
