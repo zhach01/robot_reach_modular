@@ -20,6 +20,17 @@ import numpy as np
 from dataclasses import dataclass, field
 from typing import Optional, Tuple, Dict, Any
 
+# Robust muscle force->activation allocation -- the same solver used by the
+# canonical PD/IF and sliding controllers (and the torch OSC port). The private
+# `_solve_muscle_forces_simple` (damped pseudo-inverse) mis-allocated at far
+# reaches, producing a sustained tracking offset that was *not* a singularity.
+from utils.numpy.muscle_guard import MuscleGuardParams, solve_muscle_forces
+from muscles.numpy.muscle_tools import (
+    force_to_activation_bisect,
+    active_force_from_activation,
+    saturation_repair_tau,
+)
+
 
 # =============================================================================
 # OSC Parameters
@@ -155,74 +166,6 @@ def _damped_pinv(J: np.ndarray, damping: float = 0.01) -> np.ndarray:
     return J.T @ np.linalg.inv(JJT + damping * np.eye(n))
 
 
-def _solve_muscle_forces_simple(
-    tau_des: np.ndarray,
-    R: np.ndarray,
-    Fmax_vec: np.ndarray,
-    eta: float = 1.0,
-) -> np.ndarray:
-    """
-    Simple muscle force allocation using pseudo-inverse.
-    
-    τ = -R @ F  =>  F = -R⁺ @ τ
-    
-    Then clip to [0, Fmax] and redistribute.
-    """
-    # Pseudo-inverse of moment arm matrix
-    R_pinv = _damped_pinv(-R, 0.01)
-    
-    # Initial force estimate
-    F_raw = R_pinv @ tau_des
-    
-    # Clip to feasible range [0, Fmax]
-    F_clipped = np.clip(F_raw, 0, Fmax_vec * eta)
-    
-    # Redistribution for better torque matching
-    tau_achieved = -R @ F_clipped
-    tau_error = tau_des - tau_achieved
-    
-    # Second pass with residual
-    F_residual = R_pinv @ tau_error
-    F_final = np.clip(F_clipped + 0.5 * F_residual, 0, Fmax_vec)
-    
-    return F_final
-
-
-def _force_to_activation_simple(
-    F_des: np.ndarray,
-    lenvel: np.ndarray,
-    muscle,
-    flpe: np.ndarray,
-    Fmax_vec: np.ndarray,
-) -> np.ndarray:
-    """
-    Simple force-to-activation conversion.
-    
-    For rigid tendon: a = (F - F_pe) / (Fmax * fl * fv)
-    
-    This is a simplified version that works for most cases.
-    """
-    try:
-        from muscles.numpy.muscle_tools import force_to_activation_bisect
-        return force_to_activation_bisect(F_des, lenvel, muscle, flpe, Fmax_vec, iters=12)
-    except ImportError:
-        pass
-    
-    # Simple approximation
-    # Assume fl ≈ 1, fv ≈ 1 (near optimal length and velocity)
-    F_passive = Fmax_vec * flpe
-    F_active_needed = np.maximum(F_des - F_passive, 0)
-    
-    # a = F_active / (Fmax * fl * fv) ≈ F_active / Fmax
-    a = F_active_needed / (Fmax_vec + 1e-9)
-    
-    # Clip to valid range
-    min_act = getattr(muscle, 'min_activation', 0.02)
-    a = np.clip(a, min_act, 1.0)
-    
-    return a
-
-
 # =============================================================================
 # OSC Controller
 # =============================================================================
@@ -245,6 +188,7 @@ class OSCController:
         # Number of DOF and task dimensions
         self.n_dof = 2
         self.n_task = 2
+        self.mp = MuscleGuardParams()
         
         # Previous Jacobian for Jdot estimation
         self.J_prev = None
@@ -408,15 +352,24 @@ class OSCController:
         tau_cap = 0.95 * np.abs(R) @ Fmax_vec
         tau_capped = np.clip(tau_total, -tau_cap, tau_cap)
         
-        # Muscle allocation
-        F_des = _solve_muscle_forces_simple(tau_capped, R, Fmax_vec)
-        
-        # Convert to activation
+        # Muscle allocation (robust solver: weighted active-set, matches PD/IF,
+        # sliding, and the torch OSC port).
         names = self.env.muscle.state_name
         idx_flpe = names.index("force-length PE")
         flpe = self.env.states["muscle"][0, idx_flpe, :]
-        
-        a = _force_to_activation_simple(F_des, lenvel, self.env.muscle, flpe, Fmax_vec)
+
+        F_des, _ = solve_muscle_forces(tau_capped, R, Fmax_vec, 1.0, self.mp)
+        a = force_to_activation_bisect(F_des, lenvel, self.env.muscle, flpe, Fmax_vec, iters=12)
+
+        # Saturation repair: if the realized active force can't meet the demanded
+        # torque, re-solve once against the achievable force.
+        af_now = active_force_from_activation(a, lenvel, self.env.muscle)
+        F_pred = np.clip(Fmax_vec * (af_now + flpe), 0.0, None)
+        a_min = float(getattr(self.env.muscle, "min_activation", 0.02))
+        F_corr = saturation_repair_tau(-R, F_pred, a, a_min, 1.0, Fmax_vec, tau_des=tau_capped)
+        F_corr = np.asarray(F_corr).reshape(-1)
+        if np.any(np.abs(F_corr - F_pred) > 1e-9):
+            a = force_to_activation_bisect(F_corr, lenvel, self.env.muscle, flpe, Fmax_vec, iters=8)
         
         return {
             "tau_des": tau_total,
