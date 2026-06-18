@@ -26,7 +26,7 @@ def _build_arm(device):
 
 
 def test_dynamics_on_cuda_matches_cpu():
-    import lib.dynamics.DynamicsHTM_torch_OPTIMIZED as DYN
+    import lib.dynamics.DynamicsHTM_torch as DYN
     q = [0.7, 1.1]
     arm_cpu = _build_arm("cpu")
     arm_gpu = _build_arm("cuda")

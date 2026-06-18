@@ -67,27 +67,27 @@ def main():
     )
 
     p = EnergyTankParams(
-        D0=np.diag([15.0, 15.0]),
-        K0=np.diag(gains.Kp_x),
-        KI=np.array([80.0, 80.0]),
-        Imax=np.array([0.03, 0.03]),
+        D0=np.diag([25.0, 25.0]),
+        K0=np.diag([1200.0, 1200.0]),
+        KI=np.array([0.0, 0.0]),
+        Imax=np.array([0.0, 0.0]),
         eps=num.eps,
-        lam_os_smin_target=num.lam_os_smin_target,
         lam_os_max=num.lam_os_max,
         sigma_thresh=num.sigma_thresh,
         gate_pow=num.gate_pow,
         enable_inertia_comp=toggles.enable_inertia_comp,
         enable_gravity_comp=toggles.enable_gravity_comp,
-        enable_velocity_comp=toggles.enable_velocity_comp,
         enable_joint_damping=toggles.enable_joint_damping,
-        enable_internal_force=toggles.enable_internal_force,
-        cocon_a0=ifc.cocon_a0,
+        enable_internal_force=False,
+        cocon_a0=0,
         bisect_iters=ifc.bisect_iters,
         linesearch_eps=num.linesearch_eps,
         linesearch_safety=num.linesearch_safety,
-        E0=0.08,
+        E0=0.15,
         Emin=1e-4,
-        Emax=0.5,
+        Emax=1,
+        zeta=0.8,
+
     )
     ctrl = EnergyTankController(env, arm, p)
     steps = int(pc.max_ep_duration / arm.dt)

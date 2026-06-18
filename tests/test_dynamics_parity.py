@@ -28,7 +28,7 @@ import lib.kinematics.HTM as KIN_NP
 torch = pytest.importorskip("torch")
 torch.set_default_dtype(torch.float64)
 from model_lib.skeleton_torch import TwoDofArm as ArmT
-import lib.dynamics.DynamicsHTM_torch_OPTIMIZED as DYN_T
+import lib.dynamics.DynamicsHTM_torch as DYN_T
 
 
 def _M_np(arm, q):

@@ -12,7 +12,9 @@ from plotting.plots import plot_all, make_animations, hold_anims
 
 def parse():
     p = argparse.ArgumentParser()
-    p.add_argument("--ckpt", type=str, required=True)
+    #p.add_argument("--ckpt", type=str, required=True)
+    p.add_argument("--ckpt",default="models/random_reach_bc.pt", required=False, help="Path to models/random_reach_bc.pt")
+
     p.add_argument("--goals", type=int, default=6)
     p.add_argument("--radius", type=float, default=0.10)
     p.add_argument("--seed", type=int, default=0)

@@ -29,8 +29,8 @@ import torch
 from torch import Tensor
 
 from  lib.Robot_torch import Serial as RobotSerial  # adjust import root if needed
-import lib.kinematics.HTM_kinematics_torch_OPTIMIZED as _kin
-import lib.dynamics.DynamicsHTM_torch_OPTIMIZED as _dyn
+import lib.kinematics.HTM_kinematics_torch as _kin
+import lib.dynamics.DynamicsHTM_torch as _dyn
 
 
 # ---------------------------------------------------------------------
