@@ -71,7 +71,26 @@ def _final_error(env, arm, ctrl, traj, target):
 
 
 def test_pdif_torch_tracks():
+    # canonical (optimized) torch PD/IF controller
     from controller.torch.pd_if_controller import PDIFController, PDIFParams
+    env, arm, pc = _build_env()
+    traj, target = _make_traj(env)
+    num = Numerics()
+    p = PDIFParams(
+        Kp_task=[1600.0, 1600.0], damping_ratio=1.0, Kff=1.0,
+        use_critical_damping=True, enable_nullspace=True,
+        eps=num.eps, lam_os_max=float(getattr(num, "lam_os_max", 200.0)),
+        sigma_thresh=num.sigma_thresh, gate_pow=num.gate_pow,
+        bisect_iters=12, enable_internal_force=False,
+    )
+    ctrl = PDIFController(env, arm, p)
+    err = _final_error(env, arm, ctrl, traj, target)
+    assert err < 0.01, f"PD/IF failed to track: {err*1000:.1f} mm"
+
+
+def test_pdif_torch_legacy_tracks():
+    # legacy torch PD/IF controller (original Kp_x gain API), kept for coverage
+    from controller.torch.pd_if_legacy import PDIFController, PDIFParams
     env, arm, pc = _build_env()
     traj, target = _make_traj(env)
     gn, num, tog, ifc = ControlGains(), Numerics(), ControlToggles(), InternalForceConfig()
@@ -87,7 +106,7 @@ def test_pdif_torch_tracks():
                    linesearch_eps=num.linesearch_eps, linesearch_safety=num.linesearch_safety)
     ctrl = PDIFController(env, arm, p)
     err = _final_error(env, arm, ctrl, traj, target)
-    assert err < 0.01, f"PD/IF failed to track: {err*1000:.1f} mm"
+    assert err < 0.01, f"PD/IF (legacy) failed to track: {err*1000:.1f} mm"
 
 
 def test_sliding_mode_torch_tracks():
