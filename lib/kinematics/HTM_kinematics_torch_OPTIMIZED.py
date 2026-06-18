@@ -330,6 +330,18 @@ def forwardHTM(robot: object) -> List[Tensor]:
                 T0 is identity and T_k is the product of DH rows up to k-1.
                 Each Tk has shape (4,4) or (B,4,4) if batched.
     """
+    # Per-q FK cache: forwardHTM is a pure function of q (+ constant DH), but is
+    # called 5-10x per dynamics evaluation (by inertiaMatrixCOM, gravitationalCOM,
+    # geometricJacobianCOM, forwardCOMHTM...). Memoize on the robot's q-version so
+    # all those calls at the same q share one computation. Same autograd tensors
+    # are reused (no detach) -> differentiable; correct because the version bumps
+    # on every q assignment (incl. the finite-diff Coriolis perturb/restore).
+    ver = getattr(robot, "_q_version", None)
+    if ver is not None:
+        c = getattr(robot, "_fk_joint_cache", None)
+        if c is not None and c[0] == ver:
+            return c[1]
+
     conv = getattr(robot, "dh_convention", "standard")
     DH = _dh_table(robot, use_com=False)  # (n,4) or (B,n,4)
 
@@ -340,9 +352,7 @@ def forwardHTM(robot: object) -> List[Tensor]:
         for i in range(DH.shape[0]):
             T = T @ Ts[i]                       # cumulative product (sequential)
             frames.append(T)
-        return frames
-
-    if DH.dim() == 3:
+    elif DH.dim() == 3:
         B, n, _ = DH.shape
         Ts = _dh_transforms(DH, conv)          # (B,n,4,4)
         T = _eye4_like(like=DH, batch_shape=(B,))
@@ -350,9 +360,12 @@ def forwardHTM(robot: object) -> List[Tensor]:
         for i in range(n):
             T = T @ Ts[:, i]                    # (B,4,4) @ (B,4,4)
             frames.append(T)
-        return frames
+    else:
+        raise ValueError(f"Unsupported DH shape {DH.shape} (expected (n,4) or (B,n,4)).")
 
-    raise ValueError(f"Unsupported DH shape {DH.shape} (expected (n,4) or (B,n,4)).")
+    if ver is not None:
+        robot._fk_joint_cache = (ver, frames)
+    return frames
 
 
 def forwardCOMHTM(robot: object) -> List[Tensor]:
@@ -362,6 +375,14 @@ def forwardCOMHTM(robot: object) -> List[Tensor]:
     Returns:
         framesCOM: list [T0, T_com0, T_com1, ...] where index k+1 is COM k.
     """
+    # Per-q FK cache (see forwardHTM). COM frames are reused across M, g and the
+    # Coriolis at the same q.
+    ver = getattr(robot, "_q_version", None)
+    if ver is not None:
+        c = getattr(robot, "_fk_com_cache", None)
+        if c is not None and c[0] == ver:
+            return c[1]
+
     conv = getattr(robot, "dh_convention", "standard")
     frames_joint = forwardHTM(robot)
     DHc = _dh_table(robot, use_com=True)  # (m,4) or (B,m,4)
@@ -376,9 +397,7 @@ def forwardCOMHTM(robot: object) -> List[Tensor]:
             row, _ = robot.where_is_com(j)
             T_com = frames_joint[row] @ Tc[row]
             framesCOM.append(T_com)
-        return framesCOM
-
-    if DHc.dim() == 3:
+    elif DHc.dim() == 3:
         B, m, _ = DHc.shape
         Tc = _dh_transforms(DHc, conv)         # (B,m,4,4)
         T0 = _eye4_like(like=DHc, batch_shape=(B,))
@@ -388,9 +407,12 @@ def forwardCOMHTM(robot: object) -> List[Tensor]:
             row, _ = robot.where_is_com(j)
             T_com = frames_joint[row] @ Tc[:, row]
             framesCOM.append(T_com)
-        return framesCOM
+    else:
+        raise ValueError(f"Unsupported DH_COM shape {DHc.shape} (expected (m,4) or (B,m,4)).")
 
-    raise ValueError(f"Unsupported DH_COM shape {DHc.shape} (expected (m,4) or (B,m,4)).")
+    if ver is not None:
+        robot._fk_com_cache = (ver, framesCOM)
+    return framesCOM
 
 
 def axisAngle(H: Tensor) -> Tensor:

@@ -155,8 +155,8 @@ class Skeleton:
         mask_high = (vel > 0.0) & (pos >= self.pos_upper_bound)
 
         mask = mask_low | mask_high
-        vel = torch.where(mask, torch.zeros_like(vel), vel)
-        return vel
+        # masked_fill avoids the torch.zeros_like alloc; bit-identical & differentiable.
+        return vel.masked_fill(mask, 0.0)
 
     # ------------------------------------------------------------------
     # Core API (to be overridden)
@@ -175,16 +175,15 @@ class Skeleton:
             qd_{k+1} = qd_k + qdd * dt
             q_{k+1}  = q_k  + qd_k * dt
         """
-        dt_t = torch.as_tensor(dt, dtype=self.dtype, device=self.device)
-
+        # dt is a python float -> multiply directly (no per-call tensor alloc).
         # Ensure batch shapes
         joint_state = self._as_batch(joint_state, self.state_dim)
         qdd = self._as_batch(state_derivative, self.dof)
 
         q, qd = torch.split(joint_state, self.dof, dim=1)  # (B, dof), (B, dof)
 
-        new_qd = qd + qdd * dt_t
-        new_q = q + qd * dt_t
+        new_qd = qd + qdd * dt
+        new_q = q + qd * dt
 
         new_qd = self.clip_velocity(new_q, new_qd)
         new_q = self.clip_position(new_q)
@@ -449,13 +448,10 @@ class TwoDofArm(Skeleton):
         s1, c1 = torch.sin(q1), torch.cos(q1)
         s12, c12 = torch.sin(q12), torch.cos(q12)
         L1, L2 = self.L1, self.L2
-        B = q.shape[0]
-        J = torch.zeros(B, 2, 2, dtype=q.dtype, device=q.device)
-        J[:, 0, 0] = -L1 * s1 - L2 * s12
-        J[:, 0, 1] = -L2 * s12
-        J[:, 1, 0] = L1 * c1 + L2 * c12
-        J[:, 1, 1] = L2 * c12
-        return J
+        # stack instead of zeros + index-assign (bit-identical, fewer autograd nodes)
+        row0 = torch.stack([-L1 * s1 - L2 * s12, -L2 * s12], dim=-1)
+        row1 = torch.stack([L1 * c1 + L2 * c12, L2 * c12], dim=-1)
+        return torch.stack([row0, row1], dim=-2)  # (B,2,2)
 
     def _ee_pos_analytic(self, q: Tensor) -> Tensor:
         q1 = q[:, 0]
