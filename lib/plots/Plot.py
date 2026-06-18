@@ -114,7 +114,8 @@ def trajectory3D(robot, q, m, scatter=False, GUI=False):
 
     robot.jointsPositions = q[:, 0].reshape((r, 1))
     framesHTM, fkHTM = forwardHTM(robot, m=m)
-    X = axisAngle(fkHTM)
+    # collect columns then concatenate once: O(s) vs np.append-in-loop's O(s^2)
+    cols = [axisAngle(fkHTM)]
 
     for j in range(1, s):
         # Set current joints positions
@@ -124,7 +125,9 @@ def trajectory3D(robot, q, m, scatter=False, GUI=False):
         framesHTM, fkHTM = forwardHTM(robot, m=m)
 
         # Gets Axis - Angle vector
-        X = np.append(X, axisAngle(fkHTM), axis=1)
+        cols.append(axisAngle(fkHTM))
+
+    X = np.concatenate(cols, axis=1)
 
     # End - effector position (3D Plot)
     if not scatter:
