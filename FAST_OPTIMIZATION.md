@@ -29,6 +29,26 @@ by `tests/` (run `.venv/bin/python -m pytest tests/ -q`):
 - Fully differentiable (CPU + CUDA), energy-conserving, reaches still track.
 - `tests/test_fast_analytic.py` asserts analytic↔HTM parity + the speedup.
 
+## General-path + whole-pipeline optimization (later commits)
+Beyond the 2-DOF analytic shortcut, the *general* code was profiled and optimized
+so it is fast in any configuration (n-DOF), plus per-step hot-path wins shared by
+all paths. All behavior-preserving (bit-identical, or within finite-diff noise):
+
+- **General HTM dynamics (any n-DOF, differentiable):** vectorized closed-form DH
+  for the whole table at once (no per-link `rz@tz@tx@rx`); vectorized the
+  finite-difference Coriolis (one batched inertia call + einsum vs an n² loop).
+  → general `env.step` **65.7 → 13.0 ms/step (5×)**, dynamics bit-identical.
+- **NumPy stack:** `forwardHTM`/`forwardCOMHTM` numeric path uses a closed-form
+  `_dh_step_np` (verified 0.0 vs the matrix-product form).
+- **Analytic path:** `_set_state` skips the unused DH rebuild (~−10%).
+- **Muscles:** `_clip` clamp fast-path, drop per-call `dt` tensor, `x**2`→`x*x`
+  (bit-identical; helps plant RK4 and the bisection).
+- **Controller hot path:** hoisted the bisection's per-iteration setup; bisect
+  iters 22→16 (activation resolved to ~1.5e-5); analytic `manip_grad` `[0,cot q2]`
+  for the 2-DOF arm (removes a per-step autograd backward + DH rebuild).
+  → **PD/IF reach 64.9 s (HTM) → 16.7 s (3.9×), final error unchanged (0.37 mm).**
+- **Env/trajectory:** zero-noise fast path; precomputed min-jerk time bounds.
+
 ## Benchmarks (CPU, float64)
 | Workload | HTM | Analytic | Speedup |
 |---|---|---|---|
