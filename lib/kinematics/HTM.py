@@ -13,6 +13,23 @@ from sympy import *
 from lib.dynamics.fastsymp import tidy
 
 
+def _dh_step_np(theta, d, a, alpha):
+    """Closed-form numeric DH step transform Rz(theta)Tz(d)Tx(a)Rx(alpha).
+
+    Builds the 4x4 directly (one allocation + a few trig calls) instead of
+    rz(theta).dot(tz(d)).dot(tx(a)).dot(rx(alpha)) (4 matrix builds + 3 dots).
+    Verified identical (0.0) to the matrix-product form.
+    """
+    ct, st = np.cos(theta), np.sin(theta)
+    ca, sa = np.cos(alpha), np.sin(alpha)
+    return np.array([
+        [ct, -st * ca,  st * sa, a * ct],
+        [st,  ct * ca, -ct * sa, a * st],
+        [0.0,      sa,       ca,      d],
+        [0.0,     0.0,      0.0,    1.0],
+    ], dtype=float)
+
+
 def forwardHTM(robot: object, symbolic=False):
     """Using Homogeneous Transformation Matrices, this function computes forward kinematics of a serial robot
     given joints positions in radians. Serial robot's kinematic parameters have to be set before using this function
@@ -53,7 +70,7 @@ def forwardHTM(robot: object, symbolic=False):
             )
         else:
             fkHTM = fkHTM.dot(
-                rz(frame[0]).dot(tz(frame[1])).dot(tx(frame[2])).dot(rx(frame[3]))
+                _dh_step_np(frame[0], frame[1], frame[2], frame[3])
             )
         # Append each calculated Homogeneous Transformation Matrix
         framesHTM.append(fkHTM)
@@ -102,11 +119,11 @@ def forwardCOMHTM(robot: object, symbolic=False):
                 * rx(comDH[rowCOM, 3] if column >= 3 else 0, True)
             )
         else:
-            COM = (
-                rz(comDH[rowCOM, 0] if column >= 0 else 0)
-                .dot(tz(comDH[rowCOM, 1] if column >= 1 else 0))
-                .dot(tx(comDH[rowCOM, 2] if column >= 2 else 0))
-                .dot(rx(comDH[rowCOM, 3] if column >= 3 else 0))
+            COM = _dh_step_np(
+                comDH[rowCOM, 0] if column >= 0 else 0,
+                comDH[rowCOM, 1] if column >= 1 else 0,
+                comDH[rowCOM, 2] if column >= 2 else 0,
+                comDH[rowCOM, 3] if column >= 3 else 0,
             )
 
         # Forward kinematics to Center of Mass
