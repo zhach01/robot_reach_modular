@@ -18,7 +18,7 @@ Regression tests live in `tests/` (run: `python -m pytest tests/ -q`). All green
 | H4 | **NMPC clamp-in-loop box constraints** — projected-gradient solve enforces \|F_k\|≤Fmax across the horizon (+ `TODO` for an optional QP solver) | `controller/nmpc_task.py`, `controller/nmpc_task_torch.py` | `tests/test_nmpc_clamp.py` (tracks at full budget; \|F0\|=8.0 held under tight Fmax) |
 | H5 | **CBF-QP fallback now enforces the constraint** — orthogonal half-space projection + box (old scaling couldn't satisfy negative bounds, returned zeros for n≠2) | `controller/energy_tank_cbf_qp.py` | `tests/test_cbf_qp_fallback.py` (5 cases) |
 | H6 | **ANFIS-v4.1 RLS regresses raw `φ·θ`** instead of the attenuated applied torque | `controller/anfis_controller_v4_1.py` | `tests/test_anfis_rls.py` (error↓, independent of y_pred) |
-| L | **Inertia `RᵀIR`→`RIRᵀ`** (world-frame inertia; correct for general n-DOF, no-op for this planar arm) | `lib/dynamics/DynamicsHTM.py`, `lib/dynamics/DynamicsHTM_torch_OPTIMIZED.py` | parity + energy tests green |
+| L | **Inertia `RᵀIR`→`RIRᵀ`** (world-frame inertia; correct for general n-DOF, no-op for this planar arm) | `lib/dynamics/DynamicsHTM_numpy.py`, `lib/dynamics/DynamicsHTM_torch.py` | parity + energy tests green |
 
 **Note on false positives caught by dynamic verification:** the static pass flagged a "CRITICAL torch `forwardCOMHTM` off-by-one" and an "H2 torch switching-sign error"; both were **refuted empirically** — torch dynamics are correct, and the `+K·sat(s)` sign is right (the real sliding bug was the missing `λ·e_v` term).
 

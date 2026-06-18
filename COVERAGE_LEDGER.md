@@ -57,7 +57,7 @@ handful of scalar ops). Their torch counterparts were already optimized where a
 hot one exists (`minjerk_torch`, `log_buffer_torch`, `*_guard_torch`).
 
 `trajectory/minjerk.py` (scalar sample), `lib/movements/HTM.py` (movement gen,
-setup), `muscles/muscle_tools.py` (build-time), `logging_tools/log_buffer.py`
+setup), `muscles/muscle_tools_numpy.py` (build-time), `logging_tools/log_buffer.py`
 (cheap append/step), `tasks/{random_reach,center_out,base_task}.py` (task
 defs), `utils/{kinematics_guard,dynamics_guard,gating,telemetry,linear_utils,
 math_utils}.py` (small guards/helpers).
@@ -69,7 +69,7 @@ and `state_name.index("force-length PE")` (both loop-invariant) on every
 control step — now lazily cached on first use. The pd_if + energy_tank family
 also computed `matrix_sqrt_spd(Λ)` and `matrix_isqrt_spd(Λ)` of the *same* Λ
 each step (two eigendecompositions) — now a single `matrix_sqrt_isqrt_spd`.
-`muscles/muscle_tools.py`: `active_force_from_activation` did 3 `list.index`
+`muscles/muscle_tools_numpy.py`: `active_force_from_activation` did 3 `list.index`
 calls per invocation (~66/step inside the bisection) — channel indices now
 memoized on the muscle.
 
@@ -104,7 +104,7 @@ guarded by `test_env_obs_parity` + `test_dynamics_parity`:
   5 per-step sites (skips `array_split`'s cumsum + list build).
 - `skeleton_numpy._key` — single-array fast path for the M/J/F dynamics-cache
   key (skips concatenate; identical bytes). Cache hit-rate verified unchanged.
-- `sim/simulator.py` — hoisted `np.zeros((1,2))` loads + `state_name.index` out
+- `sim/simulator_numpy.py` — hoisted `np.zeros((1,2))` loads + `state_name.index` out
   of the rollout loop.
 
 Per-step CPU work: **0.714 → 0.539 s / 2000 steps** (cProfile tottime).
