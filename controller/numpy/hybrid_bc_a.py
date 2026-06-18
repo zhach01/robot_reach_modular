@@ -144,7 +144,7 @@ class RLPolicy:
         }, path)
 
     def load(self, path: str):
-        ckpt = torch.load(path, map_location=self.device)
+        ckpt = torch.load(path, map_location=self.device, weights_only=False)
         ck_p = ckpt.get("params", {})
         in_dim  = int(ck_p.get("obs_dim",  self.p.obs_dim))
         out_dim = int(ck_p.get("act_dim",  self.p.act_dim))

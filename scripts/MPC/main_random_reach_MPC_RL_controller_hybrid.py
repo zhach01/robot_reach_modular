@@ -110,7 +110,7 @@ def _safe_xy_and_ref(logs, traj, tvec):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--ckpt", required=True, help="BC a-policy checkpoint")
+    ap.add_argument("--ckpt", default="models/random_reach_bc_a.pt", help="BC a-policy checkpoint")
     ap.add_argument("--goals", type=int, default=8)
     ap.add_argument("--radius_min", type=float, default=0.07)
     ap.add_argument("--radius_max", type=float, default=0.16)

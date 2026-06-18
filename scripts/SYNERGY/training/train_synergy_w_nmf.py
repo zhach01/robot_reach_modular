@@ -42,7 +42,7 @@ def vaf(V, W, H):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--act_npz", type=str, required=True,
+    ap.add_argument("--act_npz", type=str, default="synergy/training/act_dataset.npz",
                     help="NPZ containing activation matrix V with key 'V' (shape 6xT) or key 'act' (Tx6).")
     ap.add_argument("--K", type=int, default=3)
     ap.add_argument("--out", type=str, default="synergy/saved_model/W_model.npz")

@@ -111,8 +111,6 @@ def main():
                                             #             but if dynamics are mismatched it can excite oscillations.
                                             # ↓ smaller => relies more on feedback; more robust, possibly slower.
 
-        Kp_q=_vec2(Kp_q, (0.0, 0.0)),        # posture P (we pass our explicit values)
-        Kd_q=_vec2(Kd_q, (0.0, 0.0)),        # posture D
 
         # --- Guards / gates (stability near singularities & poor conditioning) ---
         eps=num.eps,                         # small positive for numeric safety in divisions/LS solves
@@ -125,19 +123,14 @@ def main():
                                             # ↑ larger => gate drops faster; ↓ smaller => gate drops gently.
     
         # --- Plant compensation toggles (enable all for best tracking) ---
-        enable_internal_force= True, #toggles.enable_internal_force,  # keep False for pure tracking (frees capacity)
         enable_inertia_comp=toggles.enable_inertia_comp,       # True: better authority; False: more lag
         enable_gravity_comp=toggles.enable_gravity_comp,       # True: removes load bias
         enable_velocity_comp=toggles.enable_velocity_comp,     # True: cancels Coriolis/centrifugal
-        enable_joint_damping=toggles.enable_joint_damping,     # True: adds viscous joint damping in h term
 
         # --- Allocation / inversion settings ---
-        cocon_a0= 0.12, #ifc.cocon_a0,               # baseline co-contraction (active force bias)
                                             # ↑ larger => stiffer feel, higher effort; ↓ smaller => freer, less robust.
         bisect_iters=ifc.bisect_iters,       # activation-from-force solver iterations
                                             # ↑ larger => more accurate a(F) but slower.
-        linesearch_eps=num.linesearch_eps,   # internal line search tolerance (muscle IF regulation)
-        linesearch_safety=num.linesearch_safety, # step shrink factor (0..1): smaller => safer but slower
     )
 
 

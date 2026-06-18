@@ -490,7 +490,7 @@ class MotorNetFixed:
     def load(self, path: str):
         if not (self.use_torch and self.policy is not None):
             raise RuntimeError("Torch not available; cannot load policy weights.")
-        ckpt = torch.load(path, map_location=self.device)
+        ckpt = torch.load(path, map_location=self.device, weights_only=False)
 
         # Rebuild if needed
         hidden_dim = int(ckpt.get("hidden_dim", self.p.hidden_dim))

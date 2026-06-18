@@ -593,8 +593,16 @@ def main():
         },
     }
     
+    def _json_safe(o):
+        # numpy scalars (incl. np.bool_) / arrays are not JSON-serializable by default
+        if hasattr(o, "item"):
+            return o.item()
+        if hasattr(o, "tolist"):
+            return o.tolist()
+        return str(o)
+
     with open(results_path, "w") as f:
-        json.dump(results_dict, f, indent=2)
+        json.dump(results_dict, f, indent=2, default=_json_safe)
     print(f"\nSaved detailed results to: {results_path}")
     
     # Generate comparison plots if we have data

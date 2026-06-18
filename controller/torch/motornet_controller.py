@@ -767,7 +767,7 @@ class MotorNetTrainer:
     
     def load(self, path: str) -> None:
         """Load model."""
-        ckpt = torch.load(path, map_location=self.device)
+        ckpt = torch.load(path, map_location=self.device, weights_only=False)
         self.ctrl.policy.load_state_dict(ckpt['policy_state_dict'])
         self.ctrl.optimizer.load_state_dict(ckpt['optimizer_state_dict'])
         self.ctrl.is_trained = True
