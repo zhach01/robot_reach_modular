@@ -35,7 +35,7 @@ if torch.cuda.is_available():
 
 # Import trainer
 try:
-    from controller.motornet_controller_torch import (
+    from controller.torch.motornet_controller import (
         MotorNetParams,
         MotorNetTrainer,
         MotorNetController,

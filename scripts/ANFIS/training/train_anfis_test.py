@@ -2,9 +2,9 @@
 import os
 import numpy as np
 
-from model_lib.environment_numpy import Environment
-from model_lib.muscles_numpy import RigidTendonHillMuscle
-from model_lib.effector_numpy import RigidTendonArm26
+from model_lib.numpy.environment import Environment
+from model_lib.numpy.muscles import RigidTendonHillMuscle
+from model_lib.numpy.effector import RigidTendonArm26
 
 from config import (
     PlantConfig,
@@ -14,10 +14,10 @@ from config import (
     InternalForceConfig,
     TrajectoryConfig,
 )
-from tasks.random_reach_numpy import Task as RandomReachTask
-from trajectory.minjerk_numpy import MinJerkLinearTrajectory, MinJerkParams
-from controller.anfis_controller import ANFISController, ANFISParams
-from sim.simulator_numpy import TargetReachSimulator
+from tasks.numpy.random_reach import Task as RandomReachTask
+from trajectory.numpy.minjerk import MinJerkLinearTrajectory, MinJerkParams
+from controller.numpy.anfis_controller import ANFISController, ANFISParams
+from sim.numpy.simulator import TargetReachSimulator
 
 
 def build_env(pc: PlantConfig):

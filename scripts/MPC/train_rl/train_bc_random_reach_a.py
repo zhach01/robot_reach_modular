@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # scripts/train_bc_random_reach_a.py
 import argparse, numpy as np, torch
-from controller.hybrid_bc_a_numpy import RLPolicyParams, RLPolicy, BehaviorCloner
+from controller.numpy.hybrid_bc_a import RLPolicyParams, RLPolicy, BehaviorCloner
 
 def parse_hidden(s: str):
     return tuple(int(x) for x in s.split(","))

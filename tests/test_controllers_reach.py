@@ -19,7 +19,7 @@ import pytest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-import model_lib.skeleton_numpy as sk_np
+import model_lib.numpy.skeleton as sk_np
 sk_np.USE_CACHE = False
 
 torch = pytest.importorskip("torch")
@@ -30,9 +30,9 @@ from config import (PlantConfig, ControlGains, ControlToggles, Numerics,
 
 
 def _build_env():
-    from model_lib.environment_torch import Environment
-    from model_lib.muscles_torch import RigidTendonHillMuscle
-    from model_lib.effector_torch import RigidTendonArm26
+    from model_lib.torch.environment import Environment
+    from model_lib.torch.muscles import RigidTendonHillMuscle
+    from model_lib.torch.effector import RigidTendonArm26
     pc = PlantConfig()
     mus = RigidTendonHillMuscle(min_activation=0.02, dtype=torch.float64)
     arm = RigidTendonArm26(muscle=mus, timestep=pc.timestep, damping=pc.damping,
@@ -48,7 +48,7 @@ def _build_env():
 
 
 def _make_traj(env):
-    from trajectory.minjerk_torch import MinJerkLinearTrajectoryTorch, MinJerkParams
+    from trajectory.torch.minjerk import MinJerkLinearTrajectoryTorch, MinJerkParams
     tc = TrajectoryConfig()
     ft0 = env.states["fingertip"][0, :2].clone()
     target = ft0 + torch.tensor([0.10, 0.0], dtype=torch.float64)
@@ -60,7 +60,7 @@ def _make_traj(env):
 
 
 def _final_error(env, arm, ctrl, traj, target):
-    from sim.simulator_torch import TargetReachSimulatorTorch
+    from sim.torch.simulator import TargetReachSimulatorTorch
     steps = int(PlantConfig().max_ep_duration / arm.dt)
     sim = TargetReachSimulatorTorch(env, arm, ctrl, traj, steps)
     logs = sim.run()
@@ -71,7 +71,7 @@ def _final_error(env, arm, ctrl, traj, target):
 
 
 def test_pdif_torch_tracks():
-    from controller.pd_if_controller_torch import PDIFController, PDIFParams
+    from controller.torch.pd_if_controller import PDIFController, PDIFParams
     env, arm, pc = _build_env()
     traj, target = _make_traj(env)
     gn, num, tog, ifc = ControlGains(), Numerics(), ControlToggles(), InternalForceConfig()
@@ -91,7 +91,7 @@ def test_pdif_torch_tracks():
 
 
 def test_sliding_mode_torch_tracks():
-    from controller.sliding_mode_torch import SlidingModeController, SlidingModeParams
+    from controller.torch.sliding_mode import SlidingModeController, SlidingModeParams
     env, arm, pc = _build_env()
     traj, target = _make_traj(env)
     gn, num, tog, ifc = ControlGains(), Numerics(), ControlToggles(), InternalForceConfig()

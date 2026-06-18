@@ -43,27 +43,27 @@ except ImportError:
     print("ERROR: PyTorch required! Install with: pip install torch")
     sys.exit(1)
 
-from model_lib.environment_numpy import Environment
-from model_lib.muscles_numpy import RigidTendonHillMuscle
-from model_lib.effector_numpy import RigidTendonArm26
+from model_lib.numpy.environment import Environment
+from model_lib.numpy.muscles import RigidTendonHillMuscle
+from model_lib.numpy.effector import RigidTendonArm26
 from config import PlantConfig, TrajectoryConfig
 
 # Try to import tasks (optional)
 try:
-    from tasks.center_out_numpy import Task as CenterOutTask
+    from tasks.numpy.center_out import Task as CenterOutTask
 except ImportError:
     CenterOutTask = None
 
 # Trajectory imports are optional - we have a fallback
 try:
-    from trajectory.minjerk_numpy import MinJerkLinearTrajectory, MinJerkParams
+    from trajectory.numpy.minjerk import MinJerkLinearTrajectory, MinJerkParams
 except ImportError:
     MinJerkLinearTrajectory = None
     MinJerkParams = None
 
 # Try different import paths for MotorNet
 try:
-    from controller.motornet_true import (
+    from controller.torch.motornet_true import (
         MotorNetTrue,
         MotorNetTrueParams,
         MotorNetTrueController,
@@ -152,7 +152,7 @@ def evaluate(ctrl, env, arm, goals: np.ndarray, q0: np.ndarray, tc) -> dict:
     OSCParams = None
     
     import_attempts = [
-        'controller.osc_controller',
+        'controller.numpy.osc_controller',
         'controller.osc',
         'controllers.osc_controller',
         'controllers.osc',

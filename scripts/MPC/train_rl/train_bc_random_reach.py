@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 import argparse, os, numpy as np, torch
-from controller.hybrid_mpc_rl_numpy import RLPolicy, RLPolicyParams, BehaviorCloner
+from controller.numpy.hybrid_mpc_rl import RLPolicy, RLPolicyParams, BehaviorCloner
 
 def parse():
     p = argparse.ArgumentParser()

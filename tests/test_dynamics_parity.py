@@ -1,7 +1,7 @@
 """
 Regression tests for the rigid-body dynamics core.
 
-Covers audit finding C1: the numpy `lib.Robot_numpy.Serial` shared `_cache_q` between
+Covers audit finding C1: the numpy `lib.numpy.Robot.Serial` shared `_cache_q` between
 `denavitHartenberg` (joint DH) and `denavitHartenbergCOM` (COM DH) froze the
 COM-based dynamics (M, C, g) at the construction configuration.
 
@@ -18,17 +18,17 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
 # Disable the higher-level pickle cache so we exercise the live compute path.
-import model_lib.skeleton_numpy as sk_np
+import model_lib.numpy.skeleton as sk_np
 sk_np.USE_CACHE = False
 
-from model_lib.skeleton_numpy import TwoDofArm as ArmNP
-import lib.dynamics.DynamicsHTM_numpy as DYN_NP
-import lib.kinematics.HTM_kinematics_numpy as KIN_NP
+from model_lib.numpy.skeleton import TwoDofArm as ArmNP
+import lib.dynamics.numpy.DynamicsHTM as DYN_NP
+import lib.kinematics.numpy.HTM_kinematics as KIN_NP
 
 torch = pytest.importorskip("torch")
 torch.set_default_dtype(torch.float64)
-from model_lib.skeleton_torch import TwoDofArm as ArmT
-import lib.dynamics.DynamicsHTM_torch as DYN_T
+from model_lib.torch.skeleton import TwoDofArm as ArmT
+import lib.dynamics.torch.DynamicsHTM as DYN_T
 
 
 def _M_np(arm, q):

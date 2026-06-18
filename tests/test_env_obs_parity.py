@@ -15,7 +15,7 @@ import pytest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-import model_lib.skeleton_numpy as sk_np
+import model_lib.numpy.skeleton as sk_np
 sk_np.USE_CACHE = False
 
 torch = pytest.importorskip("torch")
@@ -25,9 +25,9 @@ STACK = 3
 
 
 def _build_torch():
-    from model_lib.environment_torch import Environment
-    from model_lib.muscles_torch import RigidTendonHillMuscle
-    from model_lib.effector_torch import RigidTendonArm26
+    from model_lib.torch.environment import Environment
+    from model_lib.torch.muscles import RigidTendonHillMuscle
+    from model_lib.torch.effector import RigidTendonArm26
     mus = RigidTendonHillMuscle(min_activation=0.02, dtype=torch.float64)
     arm = RigidTendonArm26(muscle=mus, timestep=0.01, damping=0.0, dtype=torch.float64)
     env = Environment(effector=arm, max_ep_duration=2.0, action_noise=0.0,
@@ -37,9 +37,9 @@ def _build_torch():
 
 
 def _build_numpy():
-    from model_lib.environment_numpy import Environment
-    from model_lib.muscles_numpy import RigidTendonHillMuscle
-    from model_lib.effector_numpy import RigidTendonArm26
+    from model_lib.numpy.environment import Environment
+    from model_lib.numpy.muscles import RigidTendonHillMuscle
+    from model_lib.numpy.effector import RigidTendonArm26
     mus = RigidTendonHillMuscle(min_activation=0.02)
     arm = RigidTendonArm26(muscle=mus, timestep=0.01, damping=0.0)
     env = Environment(effector=arm, max_ep_duration=2.0, action_noise=0.0,

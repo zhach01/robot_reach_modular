@@ -3,9 +3,9 @@ import os
 import argparse
 import numpy as np
 
-from model_lib.environment_numpy import Environment
-from model_lib.muscles_numpy import RigidTendonHillMuscle
-from model_lib.effector_numpy import RigidTendonArm26
+from model_lib.numpy.environment import Environment
+from model_lib.numpy.muscles import RigidTendonHillMuscle
+from model_lib.numpy.effector import RigidTendonArm26
 
 from config import (
     PlantConfig,
@@ -16,15 +16,15 @@ from config import (
     TrajectoryConfig,
 )
 
-from tasks.random_reach_numpy import Task as RandomReachTask
-from trajectory.minjerk_numpy import MinJerkLinearTrajectory, MinJerkParams
+from tasks.numpy.random_reach import Task as RandomReachTask
+from trajectory.numpy.minjerk import MinJerkLinearTrajectory, MinJerkParams
 
-from sim.simulator_numpy import TargetReachSimulator
+from sim.numpy.simulator import TargetReachSimulator
 
 # pick a “teacher” controller that TRACKS well (recommended: PD/IF)
-from controller.pd_if_controller_numpy import PDIFController, PDIFParams
+from controller.numpy.pd_if_controller import PDIFController, PDIFParams
 # or you can swap to your working synergy-hybrid controller if you prefer:
-# from controller.synergy_controller import SynergyController, SynergyParams
+# from controller.numpy.synergy_controller import SynergyController, SynergyParams
 
 
 # -------------------------------

@@ -16,7 +16,7 @@ sys.path.insert(0, ROOT)
 torch = pytest.importorskip("torch")
 torch.set_default_dtype(torch.float64)
 
-from model_lib.skeleton_torch import TwoDofArm
+from model_lib.torch.skeleton import TwoDofArm
 
 
 def _arm():

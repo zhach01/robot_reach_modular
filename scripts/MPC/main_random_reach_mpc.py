@@ -2,9 +2,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from model_lib.environment_numpy import Environment
-from model_lib.muscles_numpy import RigidTendonHillMuscle
-from model_lib.effector_numpy import RigidTendonArm26
+from model_lib.numpy.environment import Environment
+from model_lib.numpy.muscles import RigidTendonHillMuscle
+from model_lib.numpy.effector import RigidTendonArm26
 
 from config import (
     PlantConfig,
@@ -16,14 +16,14 @@ from config import (
     RunConfig,
 )
 
-from tasks.random_reach_numpy import Task as RandomReachTask
-from trajectory.minjerk_numpy import MinJerkLinearTrajectory, MinJerkParams
+from tasks.numpy.random_reach import Task as RandomReachTask
+from trajectory.numpy.minjerk import MinJerkLinearTrajectory, MinJerkParams
 
 # ⬇️ MPC controller
-from controller.nmpc_task_numpy import NonlinearMPCController, NMPCParams
+from controller.numpy.nmpc_task import NonlinearMPCController, NMPCParams
 
 # Your plotting/sim infra
-from sim.simulator_numpy import TargetReachSimulator
+from sim.numpy.simulator import TargetReachSimulator
 from plotting.plots import plot_all, make_animations, hold_anims
 
 

@@ -14,7 +14,7 @@ import numpy as np
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from controller.anfis_controller_v4_1 import ANFISModuleV41
+from controller.numpy.anfis_controller_v4_1 import ANFISModuleV41
 
 
 def _unit():

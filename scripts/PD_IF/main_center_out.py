@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 import numpy as np
-from model_lib.environment_numpy import Environment
-from model_lib.muscles_numpy import RigidTendonHillMuscle
-from model_lib.effector_numpy import RigidTendonArm26
+from model_lib.numpy.environment import Environment
+from model_lib.numpy.muscles import RigidTendonHillMuscle
+from model_lib.numpy.effector import RigidTendonArm26
 from config import (
     PlantConfig,
     ControlToggles,
@@ -12,10 +12,10 @@ from config import (
     TrajectoryConfig,
     RunConfig,
 )
-from tasks.center_out_numpy import Task as CenterOutTask
-from trajectory.minjerk_numpy import MinJerkLinearTrajectory, MinJerkParams
-from controller.pd_if_controller_numpy import PDIFController, PDIFParams
-from sim.simulator_numpy import TargetReachSimulator
+from tasks.numpy.center_out import Task as CenterOutTask
+from trajectory.numpy.minjerk import MinJerkLinearTrajectory, MinJerkParams
+from controller.numpy.pd_if_controller import PDIFController, PDIFParams
+from sim.numpy.simulator import TargetReachSimulator
 from plotting.plots import plot_all, make_animations, hold_anims
 import matplotlib.pyplot as plt
 

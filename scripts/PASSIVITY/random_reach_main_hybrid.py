@@ -11,21 +11,21 @@ import os, json, argparse
 import numpy as np
 import matplotlib.pyplot as plt
 
-from model_lib.environment_numpy import Environment
-from model_lib.muscles_numpy import RigidTendonHillMuscle
-from model_lib.effector_numpy import RigidTendonArm26
+from model_lib.numpy.environment import Environment
+from model_lib.numpy.muscles import RigidTendonHillMuscle
+from model_lib.numpy.effector import RigidTendonArm26
 
 from config import (
     PlantConfig, ControlToggles, ControlGains, Numerics,
     InternalForceConfig, TrajectoryConfig, RunConfig,
 )
 
-from tasks.random_reach_numpy import Task as RandomReachTask
-from trajectory.minjerk_numpy import MinJerkLinearTrajectory, MinJerkParams
-from sim.simulator_numpy import TargetReachSimulator
+from tasks.numpy.random_reach import Task as RandomReachTask
+from trajectory.numpy.minjerk import MinJerkLinearTrajectory, MinJerkParams
+from sim.numpy.simulator import TargetReachSimulator
 from plotting.plots import plot_all, make_animations, hold_anims
 
-from controller.energy_tank_hybrid import HybridEnergyTankController, HybridEnergyTankParams
+from controller.numpy.energy_tank_hybrid import HybridEnergyTankController, HybridEnergyTankParams
 
 
 def build_env(pc: PlantConfig):

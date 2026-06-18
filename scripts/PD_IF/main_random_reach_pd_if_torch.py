@@ -16,9 +16,9 @@ from __future__ import annotations
 import numpy as np
 import torch
 
-from model_lib.environment_torch import Environment as EnvironmentTorch
-from model_lib.muscles_torch import RigidTendonHillMuscle
-from model_lib.effector_torch import RigidTendonArm26
+from model_lib.torch.environment import Environment as EnvironmentTorch
+from model_lib.torch.muscles import RigidTendonHillMuscle
+from model_lib.torch.effector import RigidTendonArm26
 
 from config import (
     PlantConfig,
@@ -30,9 +30,9 @@ from config import (
     RunConfig,
 )
 
-from trajectory.minjerk_torch import MinJerkLinearTrajectoryTorch, MinJerkParams
-from controller.pd_if_controller_torch import PDIFController, PDIFParams
-from sim.simulator_torch import TargetReachSimulatorTorch
+from trajectory.torch.minjerk import MinJerkLinearTrajectoryTorch, MinJerkParams
+from controller.torch.pd_if_controller import PDIFController, PDIFParams
+from sim.torch.simulator import TargetReachSimulatorTorch
 
 from plotting.plots import plot_all, make_animations, hold_anims
 import matplotlib.pyplot as plt

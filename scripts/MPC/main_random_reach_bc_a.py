@@ -4,13 +4,13 @@ from __future__ import annotations
 import argparse, numpy as np, matplotlib.pyplot as plt
 from typing import Tuple, List
 
-from model_lib.environment_numpy import Environment
-from model_lib.muscles_numpy import RigidTendonHillMuscle
-from model_lib.effector_numpy import RigidTendonArm26
+from model_lib.numpy.environment import Environment
+from model_lib.numpy.muscles import RigidTendonHillMuscle
+from model_lib.numpy.effector import RigidTendonArm26
 from config import PlantConfig, TrajectoryConfig, RunConfig
-from trajectory.minjerk_numpy import MinJerkLinearTrajectory, MinJerkParams
-from controller.hybrid_bc_a_numpy import RLPolicyParams, RLPolicy, RLControllerA, RLControllerAParams
-from sim.simulator_numpy import TargetReachSimulator
+from trajectory.numpy.minjerk import MinJerkLinearTrajectory, MinJerkParams
+from controller.numpy.hybrid_bc_a import RLPolicyParams, RLPolicy, RLControllerA, RLControllerAParams
+from sim.numpy.simulator import TargetReachSimulator
 from plotting.plots import plot_all, make_animations, hold_anims
 
 # -------------------- helpers --------------------

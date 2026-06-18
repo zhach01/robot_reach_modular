@@ -12,7 +12,7 @@ import numpy as np
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from controller.energy_tank_cbf_qp import solve_qp_fallback
+from controller.numpy.energy_tank_cbf_qp import solve_qp_fallback
 
 
 def test_returns_unconstrained_when_feasible():

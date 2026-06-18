@@ -16,7 +16,7 @@ import numpy as np
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from model_lib.muscles_numpy import (
+from model_lib.numpy.muscles import (
     RigidTendonHillMuscle,
     RigidTendonHillMuscleThelen,
 )

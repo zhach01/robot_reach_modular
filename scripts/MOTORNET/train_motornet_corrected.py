@@ -22,9 +22,9 @@ Usage (from repo root):
 Notes:
 - This script assumes your repo provides:
     - config.PlantConfig, TrajectoryConfig, ...
-    - tasks.random_reach_numpy.Task
-    - trajectory.minjerk_numpy.MinJerkLinearTrajectory
-    - controller.pd_if_optimized (recommended expert) OR controller.pd_if_controller_numpy
+    - tasks.numpy.random_reach.Task
+    - trajectory.numpy.minjerk.MinJerkLinearTrajectory
+    - controller.numpy.pd_if_optimized (recommended expert) OR controller.numpy.pd_if_controller
     - model_lib Environment + Arm26
 
 If any import fails, run from your project root (so python can find the package).
@@ -35,24 +35,24 @@ from pathlib import Path
 import numpy as np
 
 # --- Project imports ---
-from model_lib.environment_numpy import Environment
-from model_lib.muscles_numpy import RigidTendonHillMuscle
-from model_lib.effector_numpy import RigidTendonArm26
+from model_lib.numpy.environment import Environment
+from model_lib.numpy.muscles import RigidTendonHillMuscle
+from model_lib.numpy.effector import RigidTendonArm26
 
 from config import PlantConfig, ControlToggles, ControlGains, Numerics, InternalForceConfig, TrajectoryConfig
-from tasks.random_reach_numpy import Task as RandomReachTask
-from trajectory.minjerk_numpy import MinJerkLinearTrajectory, MinJerkParams
+from tasks.numpy.random_reach import Task as RandomReachTask
+from trajectory.numpy.minjerk import MinJerkLinearTrajectory, MinJerkParams
 
 # Expert controller: prefer optimized PDIF if present
 try:
-    from controller.pd_if_optimized import OptimizedPDIFController, OptimizedPDIFParams
+    from controller.numpy.pd_if_optimized import OptimizedPDIFController, OptimizedPDIFParams
     HAS_OPT_PDIF = True
 except Exception:
     HAS_OPT_PDIF = False
-    from controller.pd_if_controller_numpy import PDIFController, PDIFParams
+    from controller.numpy.pd_if_controller import PDIFController, PDIFParams
 
 # MotorNet controller + helper
-from controller.motornet_fixed import MotorNetFixed, MotorNetFixedParams, activation_target_to_excitation
+from controller.numpy.motornet_fixed import MotorNetFixed, MotorNetFixedParams, activation_target_to_excitation
 
 # Torch is optional, but training needs it
 try:
@@ -290,7 +290,7 @@ def train_bc(
     import torch.nn as nn
     import torch.optim as optim
 
-    from controller.motornet_fixed import GRUPolicyNetwork
+    from controller.numpy.motornet_fixed import GRUPolicyNetwork
 
     device_t = torch.device(device)
     net = GRUPolicyNetwork(input_dim=9, hidden_dim=hidden_dim, output_dim=6, n_layers=n_layers).to(device_t)
