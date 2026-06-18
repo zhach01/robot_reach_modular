@@ -400,11 +400,16 @@ def force_to_activation_bisect(
     ia = names.index("activation")
     ifl = names.index("force-length CE")
     ifv = names.index("force-velocity CE")
-    state0 = torch.zeros((B, C, M), dtype=dtype, device=device)
-    dstate0 = torch.zeros_like(state0)
+    # One scratch state buffer reused across all bisection iterations: only the
+    # activation channel changes (others stay zero), so overwrite `ia` in place
+    # each step instead of cloning a fresh (B,C,M) tensor every iteration (the
+    # clone was the bulk of this call's cost). The bisection is non-
+    # differentiable (output comes from boolean `af > target` comparisons), so
+    # reusing the buffer is result-identical and grad-safe.
+    st = torch.zeros((B, C, M), dtype=dtype, device=device)
+    dstate0 = torch.zeros_like(st)
 
     def _active_force(mid: Tensor) -> Tensor:
-        st = state0.clone()
         st[:, ia, :] = mid
         out = muscle._integrate(0.0, dstate0, st, gl_b)  # (B,C,M)
         return out[:, ia, :] * out[:, ifl, :] * out[:, ifv, :]
