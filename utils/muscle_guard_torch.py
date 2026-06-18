@@ -223,10 +223,11 @@ def _solve_single_muscle_forces(
     arg = P.k_mus * (sminGp - P.g_thresh)
     gate = stable_sigmoid(arg)
 
-    # lam_mus = lam_mus_min + (lam_mus_max - lam_mus_min) / (1 + exp(gate))
-    lam_mus = P.lam_mus_min + (P.lam_mus_max - P.lam_mus_min) / (
-        1.0 + torch.exp(gate)
-    )
+    # gate in [0,1]: damping should span the full [lam_min, lam_max] range and
+    # reach lam_max at a singularity. The previous "1/(1+exp(gate))" form only
+    # spanned ~(0.27,0.5)*range and never damped strongly near singularities
+    # (audit MEDIUM). Use (1 - gate). Mirrors utils/muscle_guard.py.
+    lam_mus = P.lam_mus_min + (P.lam_mus_max - P.lam_mus_min) * (1.0 - gate)
 
     # lam_mus += (1 - eta) * 1e-3
     lam_mus = lam_mus + (1.0 - eta) * 1e-3

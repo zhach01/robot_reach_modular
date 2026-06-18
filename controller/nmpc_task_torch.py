@@ -162,6 +162,7 @@ class NMPCParams:
     lam_du: float  = 2e-3
     Fmax: float = 600.0
     tau_clip: float = 600.0
+    proj_iters: int = 40           # projected-gradient iters for box-constrained solve (audit H4)
 
     # dynamic compensation toggles
     enable_inertia_comp: bool = True
@@ -497,9 +498,10 @@ class NonlinearMPCControllerTorch:
         Minv = torch.linalg.inv(M)                         # (n,n)
         S_os = J_xy @ (Minv @ J_xy.transpose(0, 1))        # (2,2)
 
-        # op-space guard: only lam_os is used here (same as NumPy)
+        # op-space guard: lam_os uses both the velocity and acceleration refs.
+        # Previously Xdref[0] was passed for the xdd slot too (audit MEDIUM).
         _, lam_os, _, _, _, _, _ = op_space_guard_and_gate(
-            S_os, Xdref[0], Xdref[0], self.dp
+            S_os, Xdref[0], Xddref[0], self.dp
         )
         lam_eff = float(lam_os) + float(lam_extra)
 
@@ -599,7 +601,24 @@ class NonlinearMPCControllerTorch:
         # Solve normal equations (H is SPD-ish by construction)
         ustack = torch.linalg.solve(H, b)                  # (2N,)
 
-        # back to forces, clip first control
+        # --- Box-constrained refinement (clamp-in-loop, audit H4) ---------------
+        # Enforce |F_k| <= Fmax across the whole horizon (F_k = u_k + Fff_k), not
+        # just on F0, via projected gradient on 0.5 uᵀHu - bᵀu (dependency-free).
+        # TODO: swap PGD for a dedicated box-QP solver (qpsolvers/OSQP) if needed.
+        u_lo = -self.p.Fmax - Fff_stack
+        u_hi =  self.p.Fmax - Fff_stack
+        u_proj = torch.minimum(torch.maximum(ustack, u_lo), u_hi)
+        if not torch.allclose(u_proj, ustack):
+            Lmax = torch.linalg.eigvalsh(0.5 * (H + H.T))[-1]
+            alpha = 1.0 / torch.clamp(Lmax, min=1e-12)
+            u = u_proj
+            for _ in range(int(self.p.proj_iters)):
+                u = torch.minimum(torch.maximum(u - alpha * (H @ u - b), u_lo), u_hi)
+            ustack = u
+        else:
+            ustack = u_proj
+
+        # back to forces (feasible by construction; clip is now a safety no-op)
         Fstack = ustack + Fff_stack                        # (2N,)
         F0 = _clip(Fstack[:2], -self.p.Fmax, self.p.Fmax)  # (2,)
         return F0, Lambda_reg, mu_task, lam_eff

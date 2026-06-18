@@ -124,7 +124,12 @@ class Serial(Robot):
         ]
 
         # lightweight caches / maps to accelerate repeated queries
-        self._cache_q = None
+        # NOTE: joint-DH and COM-DH MUST use independent q-cache keys. They were
+        # previously sharing a single `_cache_q`, which let the joint-DH rebuild
+        # silently validate the COM-DH cache and freeze M/C/g at the initial
+        # configuration (audit finding C1).
+        self._cache_q_joint = None
+        self._cache_q_com = None
         self._cache_links = None
         self._cache_coms = None
         self._sym_q_posmap = {}  # {Symbol('qk'): (row, col)}
@@ -163,9 +168,9 @@ class Serial(Robot):
                 qflat = self.jointsPositions[:, 0]
                 if (
                     getattr(self, "dhParameters", None) is not None
-                    and self._cache_q is not None
+                    and self._cache_q_joint is not None
                     and self._cache_links is not None
-                    and np.array_equal(self._cache_q, qflat)
+                    and np.array_equal(self._cache_q_joint, qflat)
                     and self._cache_links == tuple(self.linksLengths)
                 ):
                     return  # cache valid
@@ -175,7 +180,7 @@ class Serial(Robot):
                 alpha = np.zeros(rows, float)
                 self.dhParameters = np.column_stack((theta, d, a, alpha))
                 # update cache keys
-                self._cache_q = theta[1:].copy()
+                self._cache_q_joint = qflat.copy()
                 self._cache_links = tuple(self.linksLengths)
 
     def denavitHartenbergCOM(self, symbolic=False):
@@ -207,9 +212,9 @@ class Serial(Robot):
                 qflat = self.jointsPositions[:, 0]
                 if (
                     getattr(self, "dhParametersCOM", None) is not None
-                    and self._cache_q is not None
+                    and self._cache_q_com is not None
                     and self._cache_coms is not None
-                    and np.array_equal(self._cache_q, qflat)
+                    and np.array_equal(self._cache_q_com, qflat)
                     and self._cache_coms == tuple(self.COMs)
                 ):
                     return  # cache valid
@@ -218,8 +223,8 @@ class Serial(Robot):
                 a = np.concatenate(([0.0], np.asarray(self.COMs, float)))
                 alpha = np.zeros(rows, float)
                 self.dhParametersCOM = np.column_stack((theta, d, a, alpha))
-                # update cache keys (reuse q cache)
-                self._cache_q = theta[1:].copy()
+                # update cache keys (independent of the joint-DH q cache)
+                self._cache_q_com = qflat.copy()
                 self._cache_coms = tuple(self.COMs)
 
     def whereIsTheJoint(self, joint: int):

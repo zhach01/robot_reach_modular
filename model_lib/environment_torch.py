@@ -273,14 +273,12 @@ class Environment(gym.Env):
         ]
         self.obs_buffer["vision"] = self.obs_buffer["vision"][1:] + [self.get_vision()]
 
-        if self.action_frame_stacking > 0:
-            if action_2d is None:
-                # keep previous content
-                self.obs_buffer["action"] = self.obs_buffer["action"][1:] + [
-                    self.obs_buffer["action"][-1]
-                ]
-            else:
-                self.obs_buffer["action"] = self.obs_buffer["action"][1:] + [action_2d]
+        # Roll the action history ONLY when a real action was applied. When
+        # action_2d is None (e.g. during reset / initial obs) we must NOT drop a
+        # past action and fabricate a duplicate — that desyncs the history from
+        # the NumPy env. Matches environment_numpy.update_obs_buffer (audit H1).
+        if self.action_frame_stacking > 0 and action_2d is not None:
+            self.obs_buffer["action"] = self.obs_buffer["action"][1:] + [action_2d]
 
     def get_obs(
         self,
@@ -425,7 +423,7 @@ class Environment(gym.Env):
                 f"Effector joint state must be (B, state_dim), got {tuple(joint.shape)}"
             )
         batch_size = joint.shape[0]
-        print(f"[env_torch] reset with batch_size = {batch_size}")
+        # (Debug print removed for cleaner output)
         # ------------------------------------------------------
         # Goal defaults to origin (0, 0, ...) for each batch element
         # ------------------------------------------------------

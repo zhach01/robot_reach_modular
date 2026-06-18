@@ -1,0 +1,23 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Generated dynamics cache (must never be committed — a stale cache silently
+# serves wrong M/C/g; see audit finding C1)
+htm_cache.pkl
+model_lib/htm_cache.pkl
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# Test / tooling
+.pytest_cache/
+.coverage
+htmlcov/
+
+# OS / editor
+.DS_Store
+*.swp

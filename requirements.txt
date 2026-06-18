@@ -1,0 +1,20 @@
+# Robot-reach-modular dependencies.
+#
+# PyTorch: install the build that matches your hardware FIRST, then the rest.
+#   GPU (CUDA 12.4, e.g. NVIDIA RTX A1000):
+#     pip install torch --index-url https://download.pytorch.org/whl/cu124
+#   CPU only:
+#     pip install torch --index-url https://download.pytorch.org/whl/cpu
+#
+# Then:  pip install -r requirements.txt
+#
+# (torch is intentionally not pinned here so the index-url above controls the
+#  CPU/GPU variant; the rest are the runtime + test deps.)
+
+numpy
+scipy
+matplotlib
+gymnasium
+sympy
+pandas      # imported by lib/kinematics/HTM.py (legacy)
+pytest      # test suite in tests/

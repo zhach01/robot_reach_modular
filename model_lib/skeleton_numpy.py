@@ -43,6 +43,9 @@ USE_CACHE = True
 CACHE_DECIMALS = 4  # round q, qd to this many decimals for cache keys
 CACHE_LIMIT = 20000  # cap per map to avoid unbounded growth
 CACHE_PATH = os.path.join(HERE, "htm_cache.pkl")
+# Bump whenever the dynamics math changes so stale caches self-discard. The
+# bump to 2 invalidates every pre-C1-fix cache (those were frozen at q0).
+CACHE_VERSION = 2
 
 # Cache maps
 #   "M"   : inertia matrix D(q)
@@ -51,24 +54,27 @@ CACHE_PATH = os.path.join(HERE, "htm_cache.pkl")
 #   "J"   : geometric Jacobian J(q)
 #   "Jdot": time derivative of geometric Jacobian dJ/dt(q, qd)    # --- CHANGE: added
 #   "F"   : forward HTM frames list (we cache link1, link2, ee only, as np.ndarray)
+def _fresh_cache():
+    return {"__version__": CACHE_VERSION,
+            "M": {}, "C": {}, "g": {}, "J": {}, "Jdot": {}, "F": {}}
+
+
 if USE_CACHE:
     try:
         with open(CACHE_PATH, "rb") as f:
             _CACHE = pickle.load(f)
 
-            # --- CHANGE: schema upgrade so old pickles get the new 'Jdot' bucket ---
-            def _ensure_cache_schema(cache):
-                for k in ("M", "C", "g", "J", "Jdot", "F"):
-                    cache.setdefault(k, {})
-                return cache
-
-            _CACHE = _ensure_cache_schema(_CACHE)
-
-    # --- END CHANGE ---
+        # Discard any cache produced by an older/incompatible dynamics version
+        # (e.g. the pre-C1-fix caches that were frozen at the initial pose).
+        if not isinstance(_CACHE, dict) or _CACHE.get("__version__") != CACHE_VERSION:
+            _CACHE = _fresh_cache()
+        else:
+            for k in ("M", "C", "g", "J", "Jdot", "F"):
+                _CACHE.setdefault(k, {})
     except Exception:
-        _CACHE = {"M": {}, "C": {}, "g": {}, "J": {}, "Jdot": {}, "F": {}}  # --- CHANGE
+        _CACHE = _fresh_cache()
 else:
-    _CACHE = {"M": {}, "C": {}, "g": {}, "J": {}, "Jdot": {}, "F": {}}  # --- CHANGE
+    _CACHE = _fresh_cache()
 
 
 def _key(arrs, dec=CACHE_DECIMALS):
@@ -206,11 +212,11 @@ def _save_cache():
     if not USE_CACHE:
         return
     try:
+        _CACHE["__version__"] = CACHE_VERSION
         with open(CACHE_PATH, "wb") as f:
             pickle.dump(_CACHE, f, protocol=4)
-        print(
-            f"[cache] saved {sum(len(v) for v in _CACHE.values())} entries to {CACHE_PATH}"
-        )
+        n = sum(len(v) for v in _CACHE.values() if isinstance(v, dict))
+        print(f"[cache] saved {n} entries to {CACHE_PATH}")
     except Exception as e:
         print("[cache] save failed:", e)
 
