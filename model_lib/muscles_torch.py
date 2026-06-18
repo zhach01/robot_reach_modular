@@ -689,14 +689,16 @@ class RigidTendonHillMuscle(Muscle):
             lo=self.min_flce,
         )
 
+        # 0-d scalar constants broadcast in torch.where without allocating a full
+        # (B,1,M) tensor every call (bit-identical to the full_like form).
         a_rel_st = torch.where(
-            muscle_len_n > 1.0, 0.41 * flce, torch.full_like(flce, 0.41)
+            muscle_len_n > 1.0, 0.41 * flce, flce.new_full((), 0.41)
         )
         _brel = 1.0 - 0.9 * ((activation - self.q_crit) / (5e-3 - self.q_crit))
         b_rel_st = torch.where(
             activation < self.q_crit,
             5.2 * (_brel * _brel),
-            torch.full_like(activation, 5.2),
+            activation.new_full((), 5.2),
         )
         dfdvcon0 = activation * (flce + a_rel_st) / b_rel_st
 

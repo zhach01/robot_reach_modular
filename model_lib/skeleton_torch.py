@@ -411,26 +411,24 @@ class TwoDofArm(Skeleton):
     # All verified to machine precision against the HTM engine.
     # ------------------------------------------------------------------
     def _M_analytic(self, q: Tensor) -> Tensor:
+        # Built via stack (no zeros + in-place index-assign): bit-identical,
+        # fewer autograd nodes, vectorizes better at batch/GPU.
         c2 = torch.cos(q[:, 1])
-        B = q.shape[0]
-        M = torch.zeros(B, 2, 2, dtype=q.dtype, device=q.device)
         bc2 = self._an_beta * c2
-        M[:, 0, 0] = self._an_alpha + 2.0 * bc2
-        M[:, 0, 1] = self._an_delta + bc2
-        M[:, 1, 0] = M[:, 0, 1]
-        M[:, 1, 1] = self._an_delta
-        return M
+        m00 = self._an_alpha + 2.0 * bc2          # (B,)
+        m01 = self._an_delta + bc2                # (B,)
+        m11 = torch.full_like(c2, self._an_delta)  # (B,)
+        row0 = torch.stack([m00, m01], dim=-1)
+        row1 = torch.stack([m01, m11], dim=-1)
+        return torch.stack([row0, row1], dim=-2)   # (B,2,2)
 
     def _C_analytic(self, q: Tensor, qd: Tensor) -> Tensor:
         h = self._an_beta * torch.sin(q[:, 1])
         qd1, qd2 = qd[:, 0], qd[:, 1]
-        B = q.shape[0]
-        C = torch.zeros(B, 2, 2, dtype=q.dtype, device=q.device)
-        C[:, 0, 0] = -h * qd2
-        C[:, 0, 1] = -h * (qd1 + qd2)
-        C[:, 1, 0] = h * qd1
-        # C[:,1,1] stays 0
-        return C
+        z = torch.zeros_like(h)
+        row0 = torch.stack([-h * qd2, -h * (qd1 + qd2)], dim=-1)
+        row1 = torch.stack([h * qd1, z], dim=-1)
+        return torch.stack([row0, row1], dim=-2)   # (B,2,2)
 
     def _g_analytic(self, q: Tensor) -> Tensor:
         gx, gy = self._an_gx, self._an_gy
