@@ -16,8 +16,9 @@ Torch port of the canonical optimized numpy controller
 Batched: compute() runs on the (B, ...) state the torch simulator provides (B>=1).
 
 Note: the numpy version's optional integral action (anti-windup) is not ported —
-it defaults off and neither demo uses it. For the original legacy gain API
-(Kp_x/Kp_q/...), use controller/torch/pd_if_legacy.py.
+it defaults off and neither demo uses it. The original pre-optimization gain API
+(Kp_x/Kp_q/...) is no longer used anywhere; it is preserved only under
+archive/controller/torch/pd_if_legacy.py for historical reference.
 """
 
 from dataclasses import dataclass, field
