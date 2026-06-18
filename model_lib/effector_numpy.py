@@ -711,7 +711,8 @@ class RigidTendonArm26(Effector):
     def _get_geometry(self, joint_state: np.ndarray) -> np.ndarray:
         # custom polynomial geometry (like your original)
         j = _as_batch(joint_state, self.state_dim)
-        q, qd = np.split(j, 2, axis=1)  # (B,2)
+        _half = j.shape[1] // 2
+        q, qd = j[:, :_half], j[:, _half:]  # (B,dof)
 
         old_pos = q[:, :, None] - self.a3  # (B,2,1)
         moment_arm = old_pos * self.a2 * 2 + self.a1  # (B,2,6)

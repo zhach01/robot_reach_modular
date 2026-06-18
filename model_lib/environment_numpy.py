@@ -332,6 +332,12 @@ class Environment(gym.Env):
         loc = np.asarray(loc, dtype=float)
         feat = loc.shape[1]
 
+        # fast path: scalar zero noise (the overwhelmingly common eval case).
+        # N(0, 0) is exactly 0, so the result is bit-identical to loc; skipping
+        # the RNG draw also avoids perturbing the stream when no noise is active.
+        if np.isscalar(noise) and noise == 0.0:
+            return loc.copy()
+
         # normalize noise -> 1D vector length==feat
         if isinstance(noise, list) or isinstance(noise, np.ndarray):
             arr = np.asarray(noise, dtype=float).reshape(-1)
@@ -342,6 +348,10 @@ class Environment(gym.Env):
                 sigma = arr
         else:
             sigma = np.full((feat,), float(noise), dtype=float)
+
+        # generic fast path: all-zero sigma vector -> no perturbation.
+        if not sigma.any():
+            return loc.copy()
 
         eps = self.np_random.normal(loc=0.0, scale=sigma, size=loc.shape)
         return loc + eps

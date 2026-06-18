@@ -78,6 +78,10 @@ else:
 
 
 def _key(arrs, dec=CACHE_DECIMALS):
+    # single-array fast path (M/J/F key on q only): skip the list-comprehension
+    # and concatenate. Produces the exact same bytes as the general path.
+    if len(arrs) == 1:
+        return np.round(np.asarray(arrs[0]).ravel(), dec).tobytes()
     flat = np.concatenate([np.round(np.asarray(a).ravel(), dec) for a in arrs])
     return flat.tobytes()
 
@@ -303,7 +307,8 @@ class Skeleton:
             qd_{k+1} = qd_k + qdd * dt
             q_{k+1}  = q_k  + qd_k * dt
         """
-        q, qd = np.split(joint_state, 2, axis=1)
+        _half = joint_state.shape[1] // 2
+        q, qd = joint_state[:, :_half], joint_state[:, _half:]
         qdd = state_derivative
 
         new_qd = qd + qdd * dt
@@ -431,7 +436,8 @@ class TwoDofArm(Skeleton):
         inputs = self._as_batch(inputs, self.input_dim)
         endpoint_load = self._as_batch(endpoint_load, self.space_dim)
 
-        q, qd = np.split(joint_state, 2, axis=1)
+        _half = joint_state.shape[1] // 2
+        q, qd = joint_state[:, :_half], joint_state[:, _half:]
         self._set_state(q, qd)
 
         # Library dynamics (cached)
@@ -475,7 +481,8 @@ class TwoDofArm(Skeleton):
         Returns end-effector cartesian state [x, y, xd, yd] for each batch row.
         """
         joint_state = self._as_batch(joint_state, self.state_dim)
-        q, qd = np.split(joint_state, 2, axis=1)
+        _half = joint_state.shape[1] // 2
+        q, qd = joint_state[:, :_half], joint_state[:, _half:]
         self._set_state(q, qd)
 
         # FK frames (cached): we stored (link1, link2, ee)
@@ -511,7 +518,8 @@ class TwoDofArm(Skeleton):
         - Use linear block of the Jacobian as an approximation per point.
         """
         joint_state = self._as_batch(joint_state, self.state_dim)
-        q, qd = np.split(joint_state, 2, axis=1)
+        _half = joint_state.shape[1] // 2
+        q, qd = joint_state[:, :_half], joint_state[:, _half:]
         batch = q.shape[0]
 
         # normalize path inputs
