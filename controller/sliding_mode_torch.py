@@ -193,7 +193,7 @@ class SlidingModeController:
         # Inertia M(q)
         # ------------------------------------------------------------------
         if p.enable_inertia_comp:
-            M_any = _dyn.inertiaMatrixCOM(self.env.skeleton._robot)
+            M_any = self.env.skeleton.mass_matrix(q)
             if M_any.ndim == 2:
                 M = M_any.to(device=device, dtype=dtype).unsqueeze(0).expand(B, -1, -1)
             elif M_any.ndim == 3:
@@ -217,10 +217,7 @@ class SlidingModeController:
         # Gravity g(q)
         # ------------------------------------------------------------------
         if p.enable_gravity_comp:
-            g_any = _dyn.gravitationalCOM(
-                self.env.skeleton._robot,
-                g=self.env.skeleton._gravity_vec,
-            )
+            g_any = self.env.skeleton.gravity_vector(q)
             if g_any.ndim == 2:
                 g_single = g_any.to(device=device, dtype=dtype).view(-1)
                 g = g_single.unsqueeze(0).expand(B, -1)
@@ -245,7 +242,7 @@ class SlidingModeController:
         # Centrifugal / Coriolis C(q,q̇)
         # ------------------------------------------------------------------
         if p.enable_velocity_comp:
-            C_any = _dyn.centrifugalCoriolisCOM(self.env.skeleton._robot)
+            C_any = self.env.skeleton.coriolis_matrix(q, qd)
             if C_any.ndim == 2:
                 C = C_any.to(device=device, dtype=dtype).unsqueeze(0).expand(B, -1, -1)
             elif C_any.ndim == 3:
@@ -490,7 +487,7 @@ class SlidingModeController:
         # ------------------------------------------------------------------
         # Jacobians (broadcast to (B,6,n) if needed)
         # ------------------------------------------------------------------
-        J_any = _kin.geometricJacobian(self.env.skeleton._robot)
+        J_any = self.env.skeleton.geometric_jacobian(q)
         if J_any.ndim == 2:
             J = J_any.unsqueeze(0).expand(B, -1, -1)
         elif J_any.ndim == 3:
@@ -506,7 +503,7 @@ class SlidingModeController:
             )
         J_xy = J[:, 0:2, :]  # (B,2,n)
 
-        Jdot_any = _kin.geometricJacobianDerivative(self.env.skeleton._robot)
+        Jdot_any = self.env.skeleton.geometric_jacobian_dot(q, qd)
         if Jdot_any.ndim == 2:
             Jdot = Jdot_any.unsqueeze(0).expand(B, -1, -1)
         elif Jdot_any.ndim == 3:

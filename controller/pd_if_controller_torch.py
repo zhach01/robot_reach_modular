@@ -186,7 +186,7 @@ class PDIFController:
 
         # --- inertia
         if p.enable_inertia_comp:
-            M_any = _dyn.inertiaMatrixCOM(self.env.skeleton._robot)
+            M_any = self.env.skeleton.mass_matrix(q)
             # (n,n) or (B,n,n) -> take first slice if batched
             if M_any.dim() == 3:
                 M = M_any[0]
@@ -197,10 +197,7 @@ class PDIFController:
 
         # --- gravity
         if p.enable_gravity_comp:
-            g_any = _dyn.gravitationalCOM(
-                self.env.skeleton._robot,
-                g=self.env.skeleton._gravity_vec,
-            )  # (n,1) or (B,n,1)
+            g_any = self.env.skeleton.gravity_vector(q)  # (n,1) or (B,n,1)
             if g_any.dim() == 3:
                 g = g_any[0].view(-1)
             else:
@@ -210,7 +207,7 @@ class PDIFController:
 
         # --- Coriolis / centrifugal
         if p.enable_velocity_comp:
-            C_any = _dyn.centrifugalCoriolisCOM(self.env.skeleton._robot)
+            C_any = self.env.skeleton.coriolis_matrix(q, qd)
         else:
             C_any = _zeros((n, n), q)
 
@@ -277,14 +274,14 @@ class PDIFController:
         # ------------------------------------------------------------------
         # Jacobians (HTM kinematics, Torch)
         # ------------------------------------------------------------------
-        J_any = _kin.geometricJacobian(self.env.skeleton._robot)  # (6,n) or (B,6,n)
+        J_any = self.env.skeleton.geometric_jacobian(q)  # (6,n) or (B,6,n)
         if J_any.dim() == 3:
             J = J_any[0]
         else:
             J = J_any
         J_xy = J[0:2, :]  # (2,n)
 
-        Jdot_any = _kin.geometricJacobianDerivative(self.env.skeleton._robot)
+        Jdot_any = self.env.skeleton.geometric_jacobian_dot(q, qd)
         if Jdot_any.dim() == 3:
             Jdot = Jdot_any[0]
         else:
@@ -582,7 +579,7 @@ class PDIFController:
         # ------------------------------------------------------------------
         # Jacobians (broadcast to (B,6,n) if needed)
         # ------------------------------------------------------------------
-        J_any = _kin.geometricJacobian(self.env.skeleton._robot)  # (6,n) or (B,6,n)
+        J_any = self.env.skeleton.geometric_jacobian(q)  # (6,n) or (B,6,n)
         if J_any.ndim == 2:
             J = J_any.unsqueeze(0).expand(B, -1, -1)
         elif J_any.ndim == 3:
@@ -598,7 +595,7 @@ class PDIFController:
             )
         J_xy = J[:, 0:2, :]  # (B,2,n)
 
-        Jdot_any = _kin.geometricJacobianDerivative(self.env.skeleton._robot)
+        Jdot_any = self.env.skeleton.geometric_jacobian_dot(q, qd)
         if Jdot_any.ndim == 2:
             Jdot = Jdot_any.unsqueeze(0).expand(B, -1, -1)
         elif Jdot_any.ndim == 3:
@@ -887,7 +884,7 @@ class PDIFController:
         # Inertia M(q)
         # ------------------------------------------------------------------
         if p.enable_inertia_comp:
-            M_any = _dyn.inertiaMatrixCOM(self.env.skeleton._robot)
+            M_any = self.env.skeleton.mass_matrix(q)
             # M_any can be (n,n) or (B0,n,n)
             if M_any.ndim == 2:
                 # (n,n) -> (1,n,n) -> (B,n,n)
@@ -914,10 +911,7 @@ class PDIFController:
         # Gravity g(q)
         # ------------------------------------------------------------------
         if p.enable_gravity_comp:
-            g_any = _dyn.gravitationalCOM(
-                self.env.skeleton._robot,
-                g=self.env.skeleton._gravity_vec,
-            )
+            g_any = self.env.skeleton.gravity_vector(q)
             # g_any: (n,1) or (B0,n,1)
             if g_any.ndim == 2:
                 g_single = g_any.to(device=device, dtype=dtype).view(-1)  # (n,)
@@ -943,7 +937,7 @@ class PDIFController:
         # Centrifugal / Coriolis C(q,q̇)
         # ------------------------------------------------------------------
         if p.enable_velocity_comp:
-            C_any = _dyn.centrifugalCoriolisCOM(self.env.skeleton._robot)
+            C_any = self.env.skeleton.coriolis_matrix(q, qd)
             # C_any: (n,n) or (B0,n,n)
             if C_any.ndim == 2:
                 C = C_any.to(device=device, dtype=dtype).unsqueeze(0).expand(B, -1, -1)
