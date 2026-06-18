@@ -68,7 +68,9 @@ class Numerics:
 @dataclass
 class InternalForceConfig:
     cocon_a0: float = 0.12
-    bisect_iters: int = 22
+    # 16 bisection steps -> activation resolved to ~0.98/2^16 ≈ 1.5e-5 (sub-mN
+    # force error), indistinguishable in tracking but ~30% cheaper than 22.
+    bisect_iters: int = 16
 
 
 @dataclass

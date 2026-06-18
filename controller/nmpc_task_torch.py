@@ -266,7 +266,7 @@ class NonlinearMPCControllerTorch:
 
         # inertia
         if self.p.enable_inertia_comp:
-            M = _dyn.inertiaMatrixCOM(self.env.skeleton._robot)
+            M = self.env.skeleton.mass_matrix(q[0])
             if M.ndim == 2:
                 M = M.unsqueeze(0).expand(B, -1, -1)
         else:
@@ -275,7 +275,7 @@ class NonlinearMPCControllerTorch:
 
         # gravity
         if self.p.enable_gravity_comp:
-            g = _dyn.gravitationalCOM(self.env.skeleton._robot, self.env.skeleton._gravity_vec)
+            g = self.env.skeleton.gravity_vector(q[0])
             g = g.reshape(-1)
             g = g.unsqueeze(0).expand(B, -1)
         else:
@@ -283,7 +283,7 @@ class NonlinearMPCControllerTorch:
 
         # coriolis/centrifugal
         if self.p.enable_velocity_comp:
-            C_any = _dyn.centrifugalCoriolisCOM(self.env.skeleton._robot)
+            C_any = self.env.skeleton.coriolis_matrix(q[0], qd[0])
             if C_any.ndim == 2:
                 C_any = C_any.unsqueeze(0).expand(B, -1, -1)
             h_C = torch.einsum("bij,bj->bi", C_any, qd)
@@ -538,7 +538,7 @@ class NonlinearMPCControllerTorch:
         self.env.skeleton._set_state(q[0], qd[0])
 
         # --- Jacobian, scaling by J near singularities ---
-        J = _kin.geometricJacobian(self.env.skeleton._robot)  # (6,n) or (B,6,n)
+        J = self.env.skeleton.geometric_jacobian(q[0])  # (6,n) or (B,6,n)
         
         # FIX: Handle different Jacobian shapes properly
         if J.ndim == 3:
@@ -550,7 +550,7 @@ class NonlinearMPCControllerTorch:
         else:
             raise ValueError(f"Unexpected Jacobian shape: {J.shape}")
         
-        Jdot = _kin.geometricJacobianDerivative(self.env.skeleton._robot)
+        Jdot = self.env.skeleton.geometric_jacobian_dot(q[0], qd[0])
         
         # FIX: Handle Jdot shapes similarly
         if Jdot.ndim == 3:

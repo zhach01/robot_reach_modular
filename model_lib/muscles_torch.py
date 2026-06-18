@@ -101,13 +101,21 @@ def _clip(x: Tensor, lo: float | Tensor | None = None, hi: float | Tensor | None
     """
     if lo is None and hi is None:
         return x
+    # Fast path: python-scalar bounds (the common case) go straight to the fused
+    # clamp_* ops, which accept python floats with no tensor conversion. Bit-
+    # identical to minimum/maximum/clamp and differentiable.
+    lo_scalar = lo is None or not torch.is_tensor(lo)
+    hi_scalar = hi is None or not torch.is_tensor(hi)
+    if lo_scalar and hi_scalar:
+        if lo is None:
+            return x.clamp_max(hi)
+        if hi is None:
+            return x.clamp_min(lo)
+        return x.clamp(lo, hi)
+    # Tensor-bound fallback
     if lo is None:
-        if not torch.is_tensor(hi):
-            hi = torch.as_tensor(hi, dtype=x.dtype, device=x.device)
         return torch.minimum(x, hi)
     if hi is None:
-        if not torch.is_tensor(lo):
-            lo = torch.as_tensor(lo, dtype=x.dtype, device=x.device)
         return torch.maximum(x, lo)
     if not torch.is_tensor(lo):
         lo = torch.as_tensor(lo, dtype=x.dtype, device=x.device)
@@ -660,9 +668,9 @@ class RigidTendonHillMuscle(Muscle):
         muscle_state: Tensor,
         geometry_state: Tensor,
     ) -> Tensor:
-        dt_t = torch.as_tensor(dt, dtype=self.dtype, device=self.device)
+        # dt is a python float -> multiply directly (no per-call tensor alloc).
         activation = self.clip_activation(
-            muscle_state[:, :1, :] + state_derivative * dt_t
+            muscle_state[:, :1, :] + state_derivative * dt
         )
 
         # geometry
@@ -673,22 +681,24 @@ class RigidTendonHillMuscle(Muscle):
         muscle_len_n = muscle_len / self.l0_ce
         muscle_vel_n = muscle_vel / self.vmax
 
-        # forces
-        flpe = self.k_pe * (muscle_strain**2)
+        # forces  (x*x instead of x**2 -> mul instead of pow; bit-identical)
+        flpe = self.k_pe * (muscle_strain * muscle_strain)
         flce = _clip(
             1.0
-            + (-(muscle_len_n**2) + 2.0 * muscle_len_n - 1.0) / self.f_iso_n_den,
+            + (-(muscle_len_n * muscle_len_n) + 2.0 * muscle_len_n - 1.0) / self.f_iso_n_den,
             lo=self.min_flce,
         )
 
+        # 0-d scalar constants broadcast in torch.where without allocating a full
+        # (B,1,M) tensor every call (bit-identical to the full_like form).
         a_rel_st = torch.where(
-            muscle_len_n > 1.0, 0.41 * flce, torch.full_like(flce, 0.41)
+            muscle_len_n > 1.0, 0.41 * flce, flce.new_full((), 0.41)
         )
+        _brel = 1.0 - 0.9 * ((activation - self.q_crit) / (5e-3 - self.q_crit))
         b_rel_st = torch.where(
             activation < self.q_crit,
-            5.2
-            * (1.0 - 0.9 * ((activation - self.q_crit) / (5e-3 - self.q_crit))) ** 2,
-            torch.full_like(activation, 5.2),
+            5.2 * (_brel * _brel),
+            activation.new_full((), 5.2),
         )
         dfdvcon0 = activation * (flce + a_rel_st) / b_rel_st
 
@@ -697,7 +707,7 @@ class RigidTendonHillMuscle(Muscle):
         tmp_p_den = self.s_as - dfdvcon0 * 2.0
 
         p1 = -tmp_p_nom / tmp_p_den
-        p2 = (tmp_p_nom**2) / tmp_p_den
+        p2 = (tmp_p_nom * tmp_p_nom) / tmp_p_den
         p3 = -1.5 * f_x_a
 
         nom = torch.where(
@@ -707,7 +717,7 @@ class RigidTendonHillMuscle(Muscle):
             + p1 * self.s_as * muscle_vel_n
             + p2
             - p3 * muscle_vel_n
-            + self.s_as * muscle_vel_n**2,
+            + self.s_as * (muscle_vel_n * muscle_vel_n),
         )
         den = torch.where(
             muscle_vel_n < 0.0, b_rel_st - muscle_vel_n, p1 + muscle_vel_n

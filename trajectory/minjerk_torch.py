@@ -187,6 +187,10 @@ class MinJerkLinearTrajectoryTorch:
         self.tgrid = tgrid
         self.n_segs = T.shape[0]
         self.dim = P0.shape[1]
+        # Constant time bounds -> precompute once (avoids two .item() host syncs
+        # on every sample() call, which the controller loop hits every step).
+        self.t_start = float(tgrid[0].item())
+        self.t_end = float(tgrid[-1].item())
 
     # ---- sampling ----
 
@@ -206,10 +210,8 @@ class MinJerkLinearTrajectoryTorch:
         was_scalar = (t_in.dim() == 0)
         t_flat = t_in.view(-1)  # (Nt,)
 
-        # clamp t to [t_start, t_end]
-        t_start = float(self.tgrid[0].item())
-        t_end = float(self.tgrid[-1].item())
-        t_clamped = torch.clamp(t_flat, t_start, t_end)  # (Nt,)
+        # clamp t to [t_start, t_end] (precomputed in _plan)
+        t_clamped = torch.clamp(t_flat, self.t_start, self.t_end)  # (Nt,)
 
         # For each t, find segment index k such that tgrid[k] <= t < tgrid[k+1]
         # torch.searchsorted(tgrid, t, right=True) -> index in [0, S]

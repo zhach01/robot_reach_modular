@@ -218,6 +218,13 @@ class Environment(gym.Env):
             raise ValueError(f"_apply_noise expects (B,F) tensor, got shape {tuple(loc.shape)}")
         B, F = loc.shape
 
+        # Fast path: scalar-zero noise (the common controller / test / eval case)
+        # is a no-op and draws no RNG, exactly like the sigma==0 branch below —
+        # but skips building the sigma tensor and the all-zero reduction. Called
+        # ~4x/step. Bit-identical (and leaves the RNG stream untouched).
+        if isinstance(noise, (int, float)) and noise == 0.0:
+            return loc
+
         # normalize noise -> 1D tensor length == F
         if isinstance(noise, torch.Tensor):
             n = noise.to(self.device, self.dtype).view(-1)
