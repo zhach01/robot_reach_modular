@@ -668,9 +668,9 @@ class RigidTendonHillMuscle(Muscle):
         muscle_state: Tensor,
         geometry_state: Tensor,
     ) -> Tensor:
-        dt_t = torch.as_tensor(dt, dtype=self.dtype, device=self.device)
+        # dt is a python float -> multiply directly (no per-call tensor alloc).
         activation = self.clip_activation(
-            muscle_state[:, :1, :] + state_derivative * dt_t
+            muscle_state[:, :1, :] + state_derivative * dt
         )
 
         # geometry
@@ -681,21 +681,21 @@ class RigidTendonHillMuscle(Muscle):
         muscle_len_n = muscle_len / self.l0_ce
         muscle_vel_n = muscle_vel / self.vmax
 
-        # forces
-        flpe = self.k_pe * (muscle_strain**2)
+        # forces  (x*x instead of x**2 -> mul instead of pow; bit-identical)
+        flpe = self.k_pe * (muscle_strain * muscle_strain)
         flce = _clip(
             1.0
-            + (-(muscle_len_n**2) + 2.0 * muscle_len_n - 1.0) / self.f_iso_n_den,
+            + (-(muscle_len_n * muscle_len_n) + 2.0 * muscle_len_n - 1.0) / self.f_iso_n_den,
             lo=self.min_flce,
         )
 
         a_rel_st = torch.where(
             muscle_len_n > 1.0, 0.41 * flce, torch.full_like(flce, 0.41)
         )
+        _brel = 1.0 - 0.9 * ((activation - self.q_crit) / (5e-3 - self.q_crit))
         b_rel_st = torch.where(
             activation < self.q_crit,
-            5.2
-            * (1.0 - 0.9 * ((activation - self.q_crit) / (5e-3 - self.q_crit))) ** 2,
+            5.2 * (_brel * _brel),
             torch.full_like(activation, 5.2),
         )
         dfdvcon0 = activation * (flce + a_rel_st) / b_rel_st
@@ -705,7 +705,7 @@ class RigidTendonHillMuscle(Muscle):
         tmp_p_den = self.s_as - dfdvcon0 * 2.0
 
         p1 = -tmp_p_nom / tmp_p_den
-        p2 = (tmp_p_nom**2) / tmp_p_den
+        p2 = (tmp_p_nom * tmp_p_nom) / tmp_p_den
         p3 = -1.5 * f_x_a
 
         nom = torch.where(
@@ -715,7 +715,7 @@ class RigidTendonHillMuscle(Muscle):
             + p1 * self.s_as * muscle_vel_n
             + p2
             - p3 * muscle_vel_n
-            + self.s_as * muscle_vel_n**2,
+            + self.s_as * (muscle_vel_n * muscle_vel_n),
         )
         den = torch.where(
             muscle_vel_n < 0.0, b_rel_st - muscle_vel_n, p1 + muscle_vel_n
