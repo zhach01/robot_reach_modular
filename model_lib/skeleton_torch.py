@@ -484,47 +484,60 @@ class TwoDofArm(Skeleton):
     # verified to machine precision against the HTM engine and is ~25-60x faster.
     # q, qd may be (n,) or (B,n); outputs are batched (B,...).
     # ------------------------------------------------------------------
-    def _batch2(self, x: Tensor) -> Tensor:
+    def _prep(self, x: Tensor):
+        """Return (batched (B,n), was_1d) — mirrors HTM rank handling so the
+        public methods are drop-ins for both batched (pd_if/sliding) and
+        single-state q[0] (nmpc/energy_tank) call patterns."""
         x = torch.as_tensor(x, dtype=self.dtype, device=self.device)
-        return x.view(1, -1) if x.dim() == 1 else x
+        if x.dim() == 1:
+            return x.view(1, -1), True
+        return x, False
 
     def mass_matrix(self, q: Tensor) -> Tensor:
-        """Inertia M(q), shape (B,2,2). == lib.dynamics.inertiaMatrixCOM."""
-        return self._M_analytic(self._batch2(q))
+        """Inertia M(q). (2,2) if q is 1-D else (B,2,2). == inertiaMatrixCOM."""
+        qb, was1d = self._prep(q)
+        M = self._M_analytic(qb)
+        return M[0] if was1d else M
 
     def coriolis_matrix(self, q: Tensor, qd: Tensor) -> Tensor:
-        """Coriolis matrix C(q,qd), shape (B,2,2). == centrifugalCoriolisCOM (exact)."""
-        return self._C_analytic(self._batch2(q), self._batch2(qd))
+        """Coriolis matrix C(q,qd). (2,2) or (B,2,2). == centrifugalCoriolisCOM (exact)."""
+        qb, was1d = self._prep(q)
+        qdb, _ = self._prep(qd)
+        C = self._C_analytic(qb, qdb)
+        return C[0] if was1d else C
 
     def gravity_vector(self, q: Tensor) -> Tensor:
-        """Gravity g(q), shape (B,2,1). == lib.dynamics.gravitationalCOM."""
-        return self._g_analytic(self._batch2(q)).unsqueeze(-1)
+        """Gravity g(q). (2,1) or (B,2,1). == lib.dynamics.gravitationalCOM."""
+        qb, was1d = self._prep(q)
+        g = self._g_analytic(qb).unsqueeze(-1)
+        return g[0] if was1d else g
 
     def geometric_jacobian(self, q: Tensor) -> Tensor:
-        """6-row geometric Jacobian (B,6,2): rows 0-1 = linear xy, row 5 (wz)=1,
-        rest 0. == lib.kinematics.geometricJacobian for this planar arm."""
-        q = self._batch2(q)
-        B = q.shape[0]
-        J = torch.zeros(B, 6, 2, dtype=q.dtype, device=q.device)
-        J[:, 0:2, :] = self._J_xy_analytic(q)
+        """6-row geometric Jacobian: rows 0-1 = linear xy, row 5 (wz)=1, rest 0.
+        (6,2) if q is 1-D else (B,6,2). == lib.kinematics.geometricJacobian."""
+        qb, was1d = self._prep(q)
+        B = qb.shape[0]
+        J = torch.zeros(B, 6, 2, dtype=qb.dtype, device=qb.device)
+        J[:, 0:2, :] = self._J_xy_analytic(qb)
         J[:, 5, :] = 1.0
-        return J
+        return J[0] if was1d else J
 
     def geometric_jacobian_dot(self, q: Tensor, qd: Tensor) -> Tensor:
-        """Time-derivative of the 6-row Jacobian (B,6,2). == geometricJacobianDerivative."""
-        q = self._batch2(q); qd = self._batch2(qd)
-        q1 = q[:, 0]; q12 = q[:, 0] + q[:, 1]
-        qd1 = qd[:, 0]; qd12 = qd[:, 0] + qd[:, 1]
+        """Time-derivative of the 6-row Jacobian. (6,2) or (B,6,2). == geometricJacobianDerivative."""
+        qb, was1d = self._prep(q)
+        qdb, _ = self._prep(qd)
+        q1 = qb[:, 0]; q12 = qb[:, 0] + qb[:, 1]
+        qd1 = qdb[:, 0]; qd12 = qdb[:, 0] + qdb[:, 1]
         s1, c1 = torch.sin(q1), torch.cos(q1)
         s12, c12 = torch.sin(q12), torch.cos(q12)
         L1, L2 = self.L1, self.L2
-        B = q.shape[0]
-        Jd = torch.zeros(B, 6, 2, dtype=q.dtype, device=q.device)
+        B = qb.shape[0]
+        Jd = torch.zeros(B, 6, 2, dtype=qb.dtype, device=qb.device)
         Jd[:, 0, 0] = -L1 * c1 * qd1 - L2 * c12 * qd12
         Jd[:, 0, 1] = -L2 * c12 * qd12
         Jd[:, 1, 0] = -L1 * s1 * qd1 - L2 * s12 * qd12
         Jd[:, 1, 1] = -L2 * s12 * qd12
-        return Jd
+        return Jd[0] if was1d else Jd
 
     # ------------------------------------------------------------------
     # Core API

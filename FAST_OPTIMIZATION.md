@@ -13,9 +13,12 @@ the generic HTM/DH engine (transform matrices + geometric Jacobians + a
 - Public skeleton methods (`mass_matrix`, `coriolis_matrix`, `gravity_vector`,
   `geometric_jacobian`, `geometric_jacobian_dot`) return the **exact HTM output
   format**, so controllers can use them as drop-in replacements.
-- The two main classical controllers (`pd_if_controller_torch`,
-  `sliding_mode_torch`) were routed through these — their reaches still track
-  (0.37 mm / 0.7 mm) and are much faster.
+- **All four** torch controllers that computed their own dynamics —
+  `pd_if_controller_torch`, `sliding_mode_torch`, `nmpc_task_torch`,
+  `energy_tank_controller_torch` — are routed through these methods. The first
+  two use the batched form; the latter two use the single-state `q[0]` form
+  (the public methods are rank-preserving: 1-D input → unbatched output, mirroring
+  HTM, so they are drop-ins for both call patterns).
 
 ## Correctness
 Everything is verified to machine precision against the HTM engine and guarded
@@ -40,9 +43,11 @@ where the plant dominates. A classical-controller reach speeds up less (2.3×)
 because there the controller's muscle allocation + op-space guards dominate, not
 the dynamics.
 
-## Not changed (deliberately)
-`controller/nmpc_task_torch.py` and `controller/energy_tank_controller_torch.py`
-still use the HTM engine. They are orphaned (no script/test imports them) and use
-a different single-state-then-broadcast dynamics pattern, so a mechanical swap
-would risk silent breakage without a regression test. They can opt in later by
-calling `env.skeleton.mass_matrix(...)` etc. (using the first batch row).
+## nmpc_task_torch + energy_tank_controller_torch
+These were orphaned (no script/test imports them) and use a different
+single-state-then-broadcast dynamics pattern. They are now converted via the
+rank-preserving public methods (`env.skeleton.mass_matrix(q[0])`, etc.) and
+covered by `tests/test_orphan_controllers_reach.py` (short closed-loop reach,
+finite + makes progress). Verified behavior-preserving: with the analytic path
+the final fingertip matches the pre-swap HTM result to **0.02–0.04 mm** (just the
+exact-vs-finite-difference Coriolis), at ~4× lower wall-clock on a short reach.
