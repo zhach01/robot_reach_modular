@@ -134,6 +134,10 @@ class SlidingModeController:
         self._elbow_bias_rad  = 0.20
         self._sing_gate_eta   = 0.9
 
+        # Lazily-cached per-episode constants (computed once, not every step).
+        self._Fmax_cache = None
+        self._idx_flpe = None
+
     # ------------------------------------------------------------------
     # Utils
     # ------------------------------------------------------------------
@@ -678,7 +682,9 @@ class SlidingModeController:
 
         # ----- muscles / allocation -----
         lenvel   = geom[:, :2, :]  # (B,2,M)
-        Fmax_vec = get_Fmax_vec(self.env, R.shape[-1]).to(device=q.device, dtype=q.dtype)
+        if self._Fmax_cache is None:
+            self._Fmax_cache = get_Fmax_vec(self.env, R.shape[-1]).to(device=q.device, dtype=q.dtype)
+        Fmax_vec = self._Fmax_cache
 
         # feasibility-aware torque clip
         tau_feas     = torch.abs(R) @ Fmax_vec          # (B,n)
@@ -708,10 +714,10 @@ class SlidingModeController:
         self._tau_filt = (1.0 - self._tau_alpha) * self._tau_filt + self._tau_alpha * tau_des
         tau_des = self._tau_filt
 
-        # allocation & optional adaptive internal force
-        names    = self.env.muscle.state_name
-        idx_flpe = names.index("force-length PE")
-        flpe     = self.env.states["muscle"][:, idx_flpe, :]  # (B,M)
+        # allocation & optional adaptive internal force (idx cached once)
+        if self._idx_flpe is None:
+            self._idx_flpe = self.env.muscle.state_name.index("force-length PE")
+        flpe = self.env.states["muscle"][:, self._idx_flpe, :]  # (B,M)
 
         F_des, mus_diag = solve_muscle_forces(tau_des, R, Fmax_vec, eta_val, self.mp)
 

@@ -149,6 +149,11 @@ class PDIFController:
         # joint reference used by nullspace joint PD (initialized on first call)
         self.qref: Tensor | None = None
 
+        # Lazily-cached per-episode constants (max-isometric-force vector and the
+        # muscle state-channel index) — computed once instead of every step.
+        self._Fmax_cache: Tensor | None = None
+        self._idx_flpe: int | None = None
+
         # guard params
         self.kp = KinGuardParams()
         self.dp = DynGuardParams(
@@ -749,15 +754,15 @@ class PDIFController:
         R = geom[:, 2 : 2 + n, :]                        # (B,n,M)
         M_muscles = int(R.shape[-1])
 
-        Fmax_vec = get_Fmax_vec(
-            self.env,
-            M_muscles,
-        ).to(device=q.device, dtype=q.dtype)             # (M,)
+        if self._Fmax_cache is None:
+            self._Fmax_cache = get_Fmax_vec(self.env, M_muscles).to(
+                device=q.device, dtype=q.dtype)              # (M,) constant per episode
+            names = list(getattr(self.env.muscle, "state_name", []))
+            self._idx_flpe = names.index("force-length PE") if "force-length PE" in names else -1
+        Fmax_vec = self._Fmax_cache
 
-        names = list(getattr(self.env.muscle, "state_name", []))
-        if "force-length PE" in names:
-            idx_flpe = names.index("force-length PE")
-            flpe = self.env.states["muscle"][:, idx_flpe, :]    # (B,M)
+        if self._idx_flpe >= 0:
+            flpe = self.env.states["muscle"][:, self._idx_flpe, :]    # (B,M)
         else:
             flpe = torch.zeros(
                 (B, M_muscles), device=q.device, dtype=q.dtype
