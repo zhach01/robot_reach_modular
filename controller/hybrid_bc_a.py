@@ -266,15 +266,23 @@ class RLControllerA:
         Rm = geom[0, 2:2 + self.env.skeleton.dof, :]                 # (DOF, m)
         m = Rm.shape[1]
 
-        # passive FL-PE (fallback to zeros if absent)
-        names = self.env.muscle.state_name
-        try:
-            idx_flpe = names.index("force-length PE")
+        # passive FL-PE (fallback to zeros if absent). idx + Fmax are
+        # loop-invariant; cache on first use instead of recomputing per step.
+        if not hasattr(self, "_idx_flpe"):
+            try:
+                self._idx_flpe = self.env.muscle.state_name.index("force-length PE")
+            except (ValueError, IndexError):
+                self._idx_flpe = None
+        idx_flpe = self._idx_flpe
+        if idx_flpe is not None:
             flpe = self.env.states["muscle"][0, idx_flpe, :].astype(np.float32)  # (m,)
-        except (ValueError, IndexError):
+        else:
             flpe = np.zeros(m, dtype=np.float32)
 
-        Fmax_v = get_Fmax_vec(self.env, m).astype(np.float32)        # (m,)
+        Fmax_v = getattr(self, "_Fmax_cache", None)
+        if Fmax_v is None:
+            Fmax_v = get_Fmax_vec(self.env, m).astype(np.float32)        # (m,)
+            self._Fmax_cache = Fmax_v
 
         # ---- IMPORTANT: active_force_from_activation expects batch dims ----
         a_b = a.reshape(1, -1)                                       # (1, m)

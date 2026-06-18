@@ -11,13 +11,14 @@ class MinJerkParams:
     gamma: float = 1.10
 
 
-def _minjerk_profile(T, t):
+def _minjerk_profile(T, t, with_jerk: bool = True):
     T = float(max(T, 1e-9))
     tau = np.clip(t / T, 0.0, 1.0)
     s = 10 * tau**3 - 15 * tau**4 + 6 * tau**5
     sd = (30 * tau**2 - 60 * tau**3 + 30 * tau**4) / T
     sdd = (60 * tau - 180 * tau**2 + 120 * tau**3) / T**2
-    sddd = (60 - 360 * tau + 360 * tau**2) / T**3
+    # jerk term is optional: callers that only need pos/vel/acc skip it
+    sddd = (60 - 360 * tau + 360 * tau**2) / T**3 if with_jerk else None
     return s, sd, sdd, sddd
 
 
@@ -40,7 +41,8 @@ class MinJerkLinearTrajectory:
             P1 = np.asarray(waypoints[k + 1], float)
             L = float(np.linalg.norm(P1 - P0))
             T = _segment_time(L, params)
-            segs.append((P0, P1, T))
+            # cache the segment delta so sample() need not recompute it per step
+            segs.append((P0, P1, T, (P1 - P0).astype(float)))
             tgrid.append(tgrid[-1] + T)
         return segs, np.array(tgrid)
 
@@ -54,9 +56,8 @@ class MinJerkLinearTrajectory:
         else:
             k = int(np.searchsorted(self.tgrid, t) - 1)
             tau = float(t - self.tgrid[k])
-        P0, P1, T = self.segs[k]
-        d = (P1 - P0).astype(float)
-        s, sd, sdd, _ = _minjerk_profile(T, tau)
+        P0, P1, T, d = self.segs[k]
+        s, sd, sdd, _ = _minjerk_profile(T, tau, with_jerk=False)
         x = P0 + d * s
         xd = d * sd
         xdd = d * sdd

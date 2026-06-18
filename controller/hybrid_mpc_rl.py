@@ -225,11 +225,17 @@ class RLController:
         geom   = self.env.states["geometry"]
         lenvel = geom[:, :2, :]
         Rm     = geom[:, 2:2 + self.env.skeleton.dof, :][0]
-        Fmax_v = get_Fmax_vec(self.env, Rm.shape[1])
+        # Fmax + flpe channel index are loop-invariant; cache on first use.
+        Fmax_v = getattr(self, "_Fmax_cache", None)
+        if Fmax_v is None:
+            Fmax_v = get_Fmax_vec(self.env, Rm.shape[1])
+            self._Fmax_cache = Fmax_v
 
         F_des, _ = solve_muscle_forces(tau_des, Rm, Fmax_v, 1.0, self.mp)
-        names = self.env.muscle.state_name
-        idx_flpe = names.index("force-length PE")
+        idx_flpe = getattr(self, "_idx_flpe", None)
+        if idx_flpe is None:
+            idx_flpe = self.env.muscle.state_name.index("force-length PE")
+            self._idx_flpe = idx_flpe
         flpe  = self.env.states["muscle"][0, idx_flpe, :]
         a     = force_to_activation_bisect(F_des, lenvel, self.env.muscle, flpe, Fmax_v,
                                            iters=self.p.bisect_iters)

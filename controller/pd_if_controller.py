@@ -171,10 +171,16 @@ class PDIFController:
         geom = self.env.states["geometry"]
         lenvel = geom[:, :2, :]
         R = geom[:, 2 : 2 + self.env.skeleton.dof, :][0]
-        Fmax_vec = get_Fmax_vec(self.env, R.shape[1])
-
-        names = self.env.muscle.state_name
-        idx_flpe = names.index("force-length PE")
+        # Fmax (fixed by the muscle) and the flpe channel index are loop-invariant;
+        # cache them on first use instead of recomputing every control step.
+        Fmax_vec = getattr(self, "_Fmax_cache", None)
+        if Fmax_vec is None:
+            Fmax_vec = get_Fmax_vec(self.env, R.shape[1])
+            self._Fmax_cache = Fmax_vec
+        idx_flpe = getattr(self, "_idx_flpe", None)
+        if idx_flpe is None:
+            idx_flpe = self.env.muscle.state_name.index("force-length PE")
+            self._idx_flpe = idx_flpe
         flpe = self.env.states["muscle"][0, idx_flpe, :]
 
         # ===== [3a]/[3b]/[3c] robust muscle solve (WLS/NNLS) with shared gate

@@ -95,11 +95,16 @@ class MPC_RL_ControllerHybrid:
         R = g[0, 2:2 + self.env.skeleton.dof, :]         # (DOF,m)
         return lenvel, R
     def _flpe(self, m: int):
-        try:
-            idx = self.env.muscle.state_name.index("force-length PE")
-            return self.env.states["muscle"][0, idx, :].astype(np.float32)
-        except Exception:
+        idx = getattr(self, "_idx_flpe", False)
+        if idx is False:  # resolve the channel index once
+            try:
+                idx = self.env.muscle.state_name.index("force-length PE")
+            except Exception:
+                idx = None
+            self._idx_flpe = idx
+        if idx is None:
             return np.zeros(m, np.float32)
+        return self.env.states["muscle"][0, idx, :].astype(np.float32)
     def _conf_rl(self, obs_a, a_rl):
         z = (obs_a - self._mean) / self._std
         z_norm = float(np.sqrt(np.mean(z*z)) / max(self.hp.z_ref, 1e-6))
@@ -125,7 +130,10 @@ class MPC_RL_ControllerHybrid:
 
         lenvel, R = self._geometry()
         m = R.shape[1]
-        Fmax = get_Fmax_vec(self.env, m).astype(np.float32)
+        Fmax = getattr(self, "_Fmax_cache", None)
+        if Fmax is None:
+            Fmax = get_Fmax_vec(self.env, m).astype(np.float32)
+            self._Fmax_cache = Fmax
         flpe = self._flpe(m)
 
         # RL activations -> τ estimate (include PE)

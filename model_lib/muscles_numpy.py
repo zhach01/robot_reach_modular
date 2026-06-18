@@ -503,6 +503,14 @@ class RigidTendonHillMuscle(Muscle):
         return self.integrate(self.dt, state_derivatives, muscle_state, geometry_state)
 
     def _integrate(self, dt, state_derivative, muscle_state, geometry_state):
+        # localize hot attribute lookups (each self.X is a dict lookup; this
+        # method is per-ministep and dispatch-bound). Bit-identical.
+        l0_se = self.l0_se
+        l0_pe = self.l0_pe
+        l0_ce = self.l0_ce
+        vmax = self.vmax
+        s_as = self.s_as
+
         activation = self.clip_activation(
             muscle_state[:, :1, :] + state_derivative * dt
         )
@@ -510,10 +518,10 @@ class RigidTendonHillMuscle(Muscle):
         # geometry
         musculotendon_len = geometry_state[:, :1, :]
         muscle_vel = geometry_state[:, 1:2, :]
-        muscle_len = _clip(musculotendon_len - self.l0_se, lo=0.0)
-        muscle_strain = _clip((muscle_len - self.l0_pe) / self.l0_ce, lo=0.0)
-        muscle_len_n = muscle_len / self.l0_ce
-        muscle_vel_n = muscle_vel / self.vmax
+        muscle_len = _clip(musculotendon_len - l0_se, lo=0.0)
+        muscle_strain = _clip((muscle_len - l0_pe) / l0_ce, lo=0.0)
+        muscle_len_n = muscle_len / l0_ce
+        muscle_vel_n = muscle_vel / vmax
 
         # forces
         flpe = self.k_pe * (muscle_strain**2)
@@ -532,22 +540,24 @@ class RigidTendonHillMuscle(Muscle):
 
         f_x_a = flce * activation
         tmp_p_nom = f_x_a * 0.5
-        tmp_p_den = self.s_as - dfdvcon0 * 2.0
+        tmp_p_den = s_as - dfdvcon0 * 2.0
 
         p1 = -tmp_p_nom / tmp_p_den
         p2 = (tmp_p_nom**2) / tmp_p_den
         p3 = -1.5 * f_x_a
 
+        # the eccentric/concentric branch mask is used by both np.where calls
+        neg = muscle_vel_n < 0
         nom = np.where(
-            muscle_vel_n < 0,
+            neg,
             muscle_vel_n * activation * a_rel_st + f_x_a * b_rel_st,
             -p1 * p3
-            + p1 * self.s_as * muscle_vel_n
+            + p1 * s_as * muscle_vel_n
             + p2
             - p3 * muscle_vel_n
-            + self.s_as * muscle_vel_n**2,
+            + s_as * muscle_vel_n**2,
         )
-        den = np.where(muscle_vel_n < 0, b_rel_st - muscle_vel_n, p1 + muscle_vel_n)
+        den = np.where(neg, b_rel_st - muscle_vel_n, p1 + muscle_vel_n)
 
         active_force = _clip(nom / den, lo=0.0)
         force = (active_force + flpe) * self.max_iso_force
@@ -642,6 +652,14 @@ class RigidTendonHillMuscleThelen(Muscle):
         return self.integrate(self.dt, state_derivatives, muscle_state, geometry_state)
 
     def _integrate(self, dt, state_derivative, muscle_state, geometry_state):
+        # localize hot attribute lookups (per-ministep, dispatch-bound). Bit-identical.
+        ce_Af = self.ce_Af
+        ce_0, ce_1, ce_2, ce_3, ce_4, ce_5 = (
+            self.ce_0, self.ce_1, self.ce_2, self.ce_3, self.ce_4, self.ce_5,
+        )
+        vmax = self.vmax
+        l0_ce = self.l0_ce
+
         activation = self.clip_activation(
             muscle_state[:, :1, :] + state_derivative * dt
         )
@@ -655,21 +673,21 @@ class RigidTendonHillMuscleThelen(Muscle):
         condition = muscle_vel <= 0
         nom = np.where(
             condition,
-            self.ce_Af * (activation * self.ce_0 + 4.0 * muscle_vel + self.vmax),
-            self.ce_2 * activation + self.ce_3 * muscle_vel + self.ce_4,
+            ce_Af * (activation * ce_0 + 4.0 * muscle_vel + vmax),
+            ce_2 * activation + ce_3 * muscle_vel + ce_4,
         )
         den = np.where(
             condition,
-            a3 * self.ce_1 + self.ce_1 - 4.0 * muscle_vel,
-            self.ce_4 * a3 + self.ce_5 * muscle_vel + self.ce_4,
+            a3 * ce_1 + ce_1 - 4.0 * muscle_vel,
+            ce_4 * a3 + ce_5 * muscle_vel + ce_4,
         )
         fvce = _clip(nom / den, lo=0.0)
         flpe = _clip(
-            (np.exp(self.pe_1 * (muscle_len - self.l0_pe) / self.l0_ce) - 1.0)
+            (np.exp(self.pe_1 * (muscle_len - self.l0_pe) / l0_ce) - 1.0)
             / self.pe_den,
             lo=0.0,
         )
-        flce = np.exp(-(((muscle_len / self.l0_ce) - 1.0) ** 2) / self.ce_gamma)
+        flce = np.exp(-(((muscle_len / l0_ce) - 1.0) ** 2) / self.ce_gamma)
         force = (activation * flce * fvce + flpe) * self.max_iso_force
 
         return np.concatenate(

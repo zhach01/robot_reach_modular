@@ -1,18 +1,27 @@
-# control/sliding_mode.py
-import numpy as np
+# controller/sliding_mode.py
+"""
+Sliding Mode Controller (SMC) for 2-DoF musculoskeletal arm (Arm26).
+
+This is the *singularity-robust* version.
+
+Key design choices:
+- Switching term is applied in **task-acceleration space** and mapped through Λ_reg
+  (regularized operational-space inertia). This prevents τ = Jᵀ F_sw blow-ups near
+  kinematic singularities.
+- Early blending to a safe joint-space fallback using **cond(J)** (or σ_min(J)),
+  not cond(R) alone.
+- Optional feasibility scaling before muscle allocation to avoid “impulse then saturate”.
+
+Fixes applied (A–F):
+A) enable_inertia_comp now truly toggles Λ/μ usage (Λ=I, μ=0 when disabled)
+B) Removed extra alpha_J scaling in qref integration (avoid double scaling)
+C) Added dedicated sminJ_thresh for Jacobian gating (separate from dynamics sigma_thresh)
+D) Default eta floors set to 0 (can be reintroduced if desired)
+E) Robust cond(J) handling (inf/nan guarded)
+F) Feasibility scaling applied only when severe (default threshold 0.7)
+"""
 from dataclasses import dataclass
-
-# parity imports
-from utils.math_utils import matrix_sqrt_spd, matrix_isqrt_spd  # noqa: F401
-from utils.linear_utils import nnls_small_active_set            # noqa: F401
-
-from muscles.muscle_tools import (
-    get_Fmax_vec,
-    force_to_activation_bisect,
-    active_force_from_activation,
-    saturation_repair_tau,
-    apply_internal_force_regulation,
-)
+import numpy as np
 
 from model_lib.skeleton_numpy import (
     geometricJacobian_cached,
@@ -22,287 +31,377 @@ from model_lib.skeleton_numpy import (
     gravityCOM_cached,
 )
 
-from utils.kinematics_guard import (
-    KinGuardParams,
-    adaptive_dls_pinv,
-    scale_task_by_J,
-    add_nullspace_manip,
-)
-
+from utils.kinematics_guard import KinGuardParams, adaptive_dls_pinv, scale_task_by_J
 from utils.dynamics_guard import DynGuardParams, op_space_guard_and_gate
 from utils.muscle_guard import MuscleGuardParams, solve_muscle_forces
 from utils.telemetry import pack_diag, merge_diag
 
+from muscles.muscle_tools import (
+    get_Fmax_vec,
+    force_to_activation_bisect,
+    active_force_from_activation,
+    saturation_repair_tau,
+)
+
+
+# ---------------------------------------------------------------------
+# Params
+# ---------------------------------------------------------------------
 
 @dataclass
 class SlidingModeParams:
-    # Task-space SMC (2D)
-    lambda_surf: np.ndarray   # (2,)
-    K_switch:    np.ndarray   # (2,)
-    phi:         np.ndarray   # (2,)
-    Kff_x:       np.ndarray   # (2,)
+    # Task-space gains
+    lambda_surf: np.ndarray   # (2,) surface slope (1/s)
+    K_switch: np.ndarray      # (2,) switching gain (accel gain if switch_in_accel=True)
+    phi: np.ndarray           # (2,) boundary layer thickness
 
-    # kept for API parity (not used directly for fallback)
-    Kp_q: np.ndarray
-    Kd_q: np.ndarray
+    # Feedforward & compensation toggles
+    Kff_x: float = 1.0
+    enable_gravity_comp: bool = True
+    enable_velocity_comp: bool = True
+    enable_inertia_comp: bool = True
 
-    # Guards / gates
-    eps: float
-    lam_os_max: float
-    sigma_thresh: float
-    gate_pow: float
+    # Nullspace / bias (optional)
+    lambda_ns: float = 0.0
+    k_manip: float = 0.0
 
-    # Plant comp toggles
-    enable_inertia_comp: bool
-    enable_gravity_comp: bool
-    enable_velocity_comp: bool
-    enable_joint_damping: bool
+    # Guard params (dynamic guard uses sigma_thresh_S inside DynGuardParams)
+    eps: float = 1e-6
+    lam_os_max: float = 1e6
+    sigma_thresh: float = 1e-4
+    gate_pow: float = 2.0
 
-    # Muscle / IF options
-    enable_internal_force: bool
-    cocon_a0: float
-    bisect_iters: int
-    linesearch_eps: float
-    linesearch_safety: float
+    # Jacobian gating threshold (FIX C): used for eta_eq / eta_sw based on sminJ(J)
+    sminJ_thresh: float = 0.02
 
+    # Muscle inversion
+    bisect_iters: int = 16
+
+    # -----------------------------------------------------------------
+    # Safety knobs
+    # -----------------------------------------------------------------
+    switch_in_accel: bool = True
+    use_condJ_for_blend: bool = True
+    cond_low: float = 20.0
+    cond_high: float = 80.0
+    elbow_min_rad: float = np.deg2rad(2.0)
+
+    # Feasibility scaling behavior (FIX F)
+    tau_scale_apply_thresh: float = 0.7   # only apply scaling if raw scale < this
+    tau_scale_safety: float = 0.95        # fraction of estimated feasibility
+
+
+# ---------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------
+
+def _sat_vec(s: np.ndarray, phi: np.ndarray) -> np.ndarray:
+    """Elementwise sat(s/phi) with safe divide."""
+    z = s / (phi + 1e-12)
+    return np.clip(z, -1.0, 1.0)
+
+def _blend_weight_from_cond(cond_val: float, lo: float, hi: float) -> float:
+    """0 → 1 smoothstep blend over [lo, hi]."""
+    if cond_val <= lo:
+        return 0.0
+    if cond_val >= hi:
+        return 1.0
+    a = (cond_val - lo) / (hi - lo)
+    return float(a * a * (3.0 - 2.0 * a))  # smoothstep
+
+def _safe_cond(A: np.ndarray, fallback: float = 1e9) -> float:
+    """Robust condition number."""
+    try:
+        c = float(np.linalg.cond(A))
+        if not np.isfinite(c):
+            return float(fallback)
+        return c
+    except Exception:
+        return float(fallback)
+
+
+# ---------------------------------------------------------------------
+# Controller
+# ---------------------------------------------------------------------
 
 class SlidingModeController:
-    """
-    Unified robust controller:
-      • OS-SMC + JS fallback blend (auto, based on η & cond(R))
-      • Λ_reg regularization, α_J scaling for q_ref update
-      • joint-limit barrier + small elbow-bias out of full extension
-      • nullspace manipulability push (tiny, only when needed)
-      • adaptive co-contraction near singularities
-      • feasibility-aware torque clip (never below 30% global)
-    """
-
     def __init__(self, env, arm, params: SlidingModeParams):
-        self.env, self.arm, self.p = env, arm, params
-        self.qref = None
+        self.env = env
+        self.arm = arm
+        self.p = params
 
+        # Guards
         self.kp = KinGuardParams()
         self.dp = DynGuardParams(
-            eps=self.p.eps, lam_os_max=self.p.lam_os_max,
-            gate_pow=self.p.gate_pow, sigma_thresh_S=max(self.p.sigma_thresh, 1e-9),
+            eps=params.eps,
+            lam_os_max=params.lam_os_max,
+            gate_pow=params.gate_pow,
+            sigma_thresh_S=max(params.sigma_thresh, 1e-9),
         )
         self.mp = MuscleGuardParams()
 
-        dof = getattr(self.env.skeleton, "dof", 2)
-        self._tau_clip  = 300.0
-        self._tau_alpha = 1.0
-        self._tau_filt  = np.zeros(dof)
+        # Internal reference (joint)
+        self.qref = None
 
-        # ----- blending / gates -----
-        self._eta_eq_floor = 0.50
-        self._eta_sw_floor = 0.35
-        self._cond_low     =  400 #600.0     # start weighting to joint-space here
-        self._cond_high    =  2500 #5000.0    # full joint-space weight by here
-        self._lam_os_floor = 1e-3
+        # thresholds for blending
+        self._cond_low = float(getattr(params, "cond_low", 20.0))
+        self._cond_high = float(getattr(params, "cond_high", 80.0))
+        self._elbow_min = float(getattr(params, "elbow_min_rad", np.deg2rad(2.0)))
 
-        # ----- joint-space fallback (simple PD on q* from DLS) -----
-        self._Kp_js = np.array([30.0, 30.0])   # 25 25 joint fallback stiffness
-        self._Kd_js = np.array([ 3.5,  3.5])   # 3 3 joint fallback damping
-        self._k_pos_map = 1.4                  # 1.2 map x error to q* via J^+ gain
+        # FIX D: floors default to 0 (can be changed here if you want)
+        self._eta_eq_floor = 0.0
+        self._eta_sw_floor = 0.0
+        self._eta_sw_pow = 0.75
 
-        # ----- nullspace / joint-limit helpers -----
-        self._manip_gain     = 1.0 #0.8
-        self._lim_margin_frac= 0.25 #0.20
-        self._lim_eps        = 1e-4
-        self._lim_power      = 2.0
-        self._k_lim          = 14.0 #12.0
-        self._kd_lim         = 0.6 #0.4
-        self._k_sing_Kp      = 16.0 #12.0
-        self._k_sing_Kd      = 0.9 #0.8
-        self._elbow_bias_rad = 0.20 #0.17   # ~10°
-        self._sing_gate_eta  = 0.9 #0.85
+        # feasibility scaling settings (FIX F)
+        self._tau_scale_apply_thresh = float(getattr(params, "tau_scale_apply_thresh", 0.7))
+        self._tau_scale_safety = float(getattr(params, "tau_scale_safety", 0.95))
 
-    # ---------- utils ----------
-    @staticmethod
-    def _sat(z): return np.clip(z, -1.0, 1.0)
-
-    def _compute_dynamics(self, q, qd):
-        p = self.p
-        n = len(q)
-        M = inertiaMatrixCOM_cached(self.env.skeleton._robot, symbolic=False) if p.enable_inertia_comp else np.eye(n)
-        g = gravityCOM_cached(self.env.skeleton._robot, self.env.skeleton._gravity_vec, symbolic=False).reshape(-1) if p.enable_gravity_comp else np.zeros_like(q)
-        C_any = centrifugalCoriolisCOM_cached(self.env.skeleton._robot, symbolic=False) if p.enable_velocity_comp else np.zeros((n, n))
-        D = float(self.arm.damping) if p.enable_joint_damping else 0.0
-        C_any = np.asarray(C_any)
-        h = (C_any @ qd + g + D*qd) if C_any.ndim==2 else (C_any.reshape(-1) + g + D*qd)
-        return M, h
-
-    def _joint_limit_tau(self, q, qd):
-        q_min = getattr(self.env.skeleton, "q_min", None)
-        q_max = getattr(self.env.skeleton, "q_max", None)
-        if q_min is None or q_max is None: return np.zeros_like(q)
-        q_min = np.asarray(q_min).reshape(-1); q_max = np.asarray(q_max).reshape(-1)
-        rng = q_max - q_min; margin = self._lim_margin_frac * rng
-        inner_min, inner_max = q_min + margin, q_max - margin
-        dmin = np.maximum(0.0, inner_min - q); dmax = np.maximum(0.0, q - inner_max)
-        if not (np.any(dmin>0) or np.any(dmax>0)): return np.zeros_like(q)
-        dmin_c = dmin + self._lim_eps; dmax_c = dmax + self._lim_eps
-        grad = (1.0/(dmin_c**self._lim_power)) - (1.0/(dmax_c**self._lim_power))
-        activity = (1.0/(dmin_c**self._lim_power)) + (1.0/(dmax_c**self._lim_power))
-        return self._k_lim*grad - self._kd_lim*qd*np.clip(activity, 0.0, 1e6)
-
-    def _singularity_bias_tau(self, q, qd, eta_val):
-        if eta_val >= self._sing_gate_eta: return np.zeros_like(q)
-        q_min = getattr(self.env.skeleton, "q_min", None)
-        q_max = getattr(self.env.skeleton, "q_max", None)
-        if q_min is not None and q_max is not None:
-            q_center = 0.5*(np.asarray(q_min).reshape(-1)+np.asarray(q_max).reshape(-1))
-        else:
-            q_center = q.copy(); q_center[1] = self._elbow_bias_rad if q[1]>=0.0 else -self._elbow_bias_rad
-        e = q_center - q
-        return ((1.0 - eta_val)**2) * (self._k_sing_Kp*e - self._k_sing_Kd*qd)
-
-    def _blend_weight(self, eta_val, condR):
-        # w=0 → pure OS-SMC; w=1 → pure Joint fallback
-        w_eta = np.clip(1.0 - float(eta_val), 0.0, 1.0)**2
-        # normalize condR into [0,1] between thresholds
-        cr = float(condR)
-        w_cr = np.clip((cr - self._cond_low)/(self._cond_high - self._cond_low), 0.0, 1.0)
-        return max(w_eta, w_cr)
-
-    # ---------- main ----------
-    def reset(self, q0):
+    def reset(self, q0: np.ndarray):
         self.qref = q0.copy()
-        self._tau_filt[...] = 0.0
 
-    def compute(self, x_d, xd_d, xdd_d):
-        # state
+    def compute(self, x_d: np.ndarray, xd_d: np.ndarray, xdd_d: np.ndarray):
+        # -----------------------------------------------------------------
+        # State
+        # -----------------------------------------------------------------
         joint = self.env.states["joint"][0]
         q, qd = joint[:2], joint[2:]
         cart = self.env.states["cartesian"][0]
         x, xd = cart[:2], cart[2:]
         self.env.skeleton._set_state(q, qd)
-        if self.qref is None: self.qref = q.copy()
 
-        # Jacobians
-        J = geometricJacobian_cached(self.env.skeleton._robot, symbolic=False); J_xy = J[0:2, :]
-        Jdot = geometricJacobianDot_cached(self.env.skeleton._robot, symbolic=False); Jdot_xy = Jdot[0:2, :]
-        n = q.shape[0]
+        # -----------------------------------------------------------------
+        # Kinematics
+        # -----------------------------------------------------------------
+        J = geometricJacobian_cached(self.env.skeleton._robot, symbolic=False)
+        J_xy = J[0:2, :]
+        Jdot = geometricJacobianDot_cached(self.env.skeleton._robot, symbolic=False)
+        Jdot_xy = Jdot[0:2, :]
 
-        # [1] kinematic guard + scaling
-        J_pinv_dls, sminJ, lamJ = adaptive_dls_pinv(J_xy, n, self.kp)
-        xd_d, xdd_d, alpha_J_raw = scale_task_by_J(xd_d, xdd_d, sminJ, self.kp)
-        alpha_J = float(np.squeeze(np.asarray(alpha_J_raw))); alpha_J = np.clip(alpha_J, 0.0, 1.0)
+        # DLS pseudoinverse + diagnostics
+        J_pinv_dls, sminJ, lamJ = adaptive_dls_pinv(J_xy, 2, self.kp)
 
-        # gentle qref update
-        qd_des = (0.6 * alpha_J) * (J_pinv_dls @ xd_d)
-        self.qref = self.qref + qd_des * self.arm.dt
+        # -----------------------------------------------------------------
+        # Scale desired task motion near singularities (kinematic safety)
+        # -----------------------------------------------------------------
+        xd_d_s, xdd_d_s, alpha_J = scale_task_by_J(
+            xd_d.copy(), xdd_d.copy(), sminJ=sminJ, P=self.kp
+        )
 
-        # dynamics
-        M, h = self._compute_dynamics(q, qd)
+        # -----------------------------------------------------------------
+        # Operational-space guard (dynamic safety): Λ_reg and gated refs
+        # -----------------------------------------------------------------
+        M = inertiaMatrixCOM_cached(self.env.skeleton._robot, symbolic=False)
+        Minv = np.linalg.inv(M)
+        S = J_xy @ Minv @ J_xy.T
 
-        # [2] op-space metrics + gating
-        S = J_xy @ np.linalg.solve(M, J_xy.T)
-        Lambda, lam_os, eta_raw, eta2, xd_d, xdd_d, dyn_diag = op_space_guard_and_gate(S, xd_d, xdd_d, self.dp)
-        eta_val = float(np.squeeze(np.asarray(eta_raw)))
-        lam_os_val = float(np.squeeze(np.asarray(lam_os))) + self._lam_os_floor
+        Lambda_reg, lam_os, eta, eta2, xd_d_g, xdd_d_g, dyn_diag = op_space_guard_and_gate(
+            S, xd_d_s.copy(), xdd_d_s.copy(), self.dp
+        )
 
-        # regularized Λ
-        S_reg = S + lam_os_val * np.eye(2)
-        Lambda_reg = np.linalg.inv(S_reg)
+        # -----------------------------------------------------------------
+        # Maintain internal joint reference by integrating gated task velocity
+        # FIX B: do NOT multiply by alpha_J again (avoid double scaling)
+        # -----------------------------------------------------------------
+        if self.qref is None:
+            self.qref = q.copy()
 
-        # ----- OS-SMC torque -----
-        mu   = Lambda_reg @ (J_xy @ np.linalg.solve(M, h) - Jdot_xy @ qd)
-        F_eq = Lambda_reg @ (self.p.Kff_x * xdd_d) + mu
-        e_x  = x - x_d
-        e_v  = xd - xd_d
-        s    = e_v + (self.p.lambda_surf * e_x)
-        sw   = self._sat(s / (self.p.phi + 1e-12))
-        eta_eq = max(eta_val, self._eta_eq_floor)
-        eta_sw = max(eta_val, self._eta_sw_floor)
-        F_sw   = -(self.p.K_switch * sw) * eta_sw
-        F_task = (eta_eq * F_eq) + F_sw
-        tau_os = J_xy.T @ F_task
+        qd_des = (J_pinv_dls @ xd_d_g)
+        self.qref = self.qref + self.arm.dt * qd_des
 
-        # ----- Joint-space fallback (when singular) -----
-        # desired q* via DLS map of position error
-        q_star = q + self._k_pos_map * (J_pinv_dls @ (x_d - x))
-        qdd_js = self._Kp_js * (q_star - q) - self._Kd_js * qd
-        tau_js = M @ qdd_js + h
+        # -----------------------------------------------------------------
+        # Inertia compensation toggle (FIX A)
+        # -----------------------------------------------------------------
+        if self.p.enable_inertia_comp:
+            Lambda_used = Lambda_reg
+        else:
+            Lambda_used = np.eye(2, dtype=float)
 
-        # ----- Blend OS & JS -----
-        # condition on moment-arm matrix too (feasibility)
-        geom = self.env.states["geometry"]; R = geom[:, 2:2 + self.env.skeleton.dof, :][0]
-        condR = np.linalg.cond(R) if R.shape[0] >= 2 else 1.0
-        w = self._blend_weight(eta_val, condR)
+        # -----------------------------------------------------------------
+        # Dynamics terms h = C qd + g
+        # -----------------------------------------------------------------
+        h = np.zeros_like(q)
+        if self.p.enable_velocity_comp:
+            C = centrifugalCoriolisCOM_cached(self.env.skeleton._robot, symbolic=False)
+            C = np.asarray(C)
+            h = h + (C @ qd if C.ndim == 2 else C.reshape(-1))
+        if self.p.enable_gravity_comp:
+            g = gravityCOM_cached(
+                self.env.skeleton._robot,
+                self.env.skeleton._gravity_vec,
+                symbolic=False,
+            ).reshape(-1)
+            h = h + g
+
+        # μ term only meaningful if inertia comp enabled
+        if self.p.enable_inertia_comp:
+            mu = Lambda_used @ (J_xy @ (Minv @ h)) - Lambda_used @ (Jdot_xy @ qd)
+        else:
+            mu = np.zeros(2, dtype=float)
+
+        # -----------------------------------------------------------------
+        # Sliding surface in task space (textbook tracking error)
+        # -----------------------------------------------------------------
+        e_x = x_d - x
+        e_v = xd_d_g - xd
+        s = e_v + self.p.lambda_surf * e_x
+        sw = _sat_vec(s, self.p.phi)
+
+        # -----------------------------------------------------------------
+        # Eta gating based on Jacobian σ_min (FIX C + FIX D)
+        # -----------------------------------------------------------------
+        ratio = float(sminJ / (float(self.p.sminJ_thresh) + 1e-12))
+        ratio = float(np.clip(ratio, 0.0, 1.0))
+
+        eta_eq = max(self._eta_eq_floor, ratio)
+        eta_eq = float(np.clip(eta_eq, 0.0, 1.0))
+
+        eta_sw = max(self._eta_sw_floor, ratio ** self._eta_sw_pow)
+        eta_sw = float(np.clip(eta_sw, 0.0, 1.0))
+
+        # -----------------------------------------------------------------
+        # Operational-space control law
+        # -----------------------------------------------------------------
+        if self.p.switch_in_accel:
+            # Acceleration-level SMC (robust):
+            # eq_part: xdd_d + λ e_v ; sw_part: K sat(s/phi)
+            eq_part = (self.p.Kff_x * xdd_d_g) + (self.p.lambda_surf * e_v)
+            sw_part = (self.p.K_switch * sw)
+
+            xdd_cmd = (eta_eq * eq_part) + (eta_sw * sw_part)
+
+            F_task = (Lambda_used @ xdd_cmd) + mu
+            tau_os = J_xy.T @ F_task
+        else:
+            # Force-level SMC (kept for debugging / legacy comparison)
+            F_eq = (Lambda_used @ (self.p.Kff_x * xdd_d_g)) + mu
+            F_sw = -(self.p.K_switch * sw) * eta_sw
+            F_task = (eta_eq * F_eq) + F_sw
+            tau_os = J_xy.T @ F_task
+
+        # -----------------------------------------------------------------
+        # Nullspace / manipulability torque (kept off by default)
+        # -----------------------------------------------------------------
+        tau_ns = np.zeros_like(q)
+        ns_diag = {}
+
+        # -----------------------------------------------------------------
+        # Mild posture bias (optional safety; retained)
+        # -----------------------------------------------------------------
+        q_center = np.array([np.pi / 3, np.pi / 2])
+        tau_bias = -0.15 * (q - q_center) * (1.0 - float(np.clip(eta, 0.0, 1.0)))
+
+        # -----------------------------------------------------------------
+        # Blending to joint fallback near singularities / low authority
+        # -----------------------------------------------------------------
+        geom = self.env.states["geometry"]
+        R = geom[0, 2:2 + self.env.skeleton.dof, :]  # (dof, n_muscle)
+
+        condR = _safe_cond(R, fallback=1e9)
+        condJ = _safe_cond(J_xy, fallback=1e9) if self.p.use_condJ_for_blend else 0.0  # FIX E
+        cond_metric = condJ if self.p.use_condJ_for_blend else condR
+
+        w_cr = _blend_weight_from_cond(cond_metric, self._cond_low, self._cond_high)
+        w_eta = float(np.clip(1.0 - eta, 0.0, 1.0))
+        w = float(np.clip(max(w_cr, 0.5 * w_eta), 0.0, 1.0))
+
+        # Joint fallback target: hold qref; keep elbow away from extension
+        q_star = self.qref.copy()
+        q_star[1] = max(float(q_star[1]), self._elbow_min)
+
+        # Simple joint-space PD damping (fallback)
+        Kp_js = np.array([12.0, 10.0])
+        Kd_js = np.array([2.5, 2.0])
+        tau_js = Kp_js * (q_star - q) + Kd_js * (0.0 - qd)
+
         tau_task = (1.0 - w) * tau_os + w * tau_js
 
-        # ----- direct joint regulation -----
-        tau_lim  = self._joint_limit_tau(q, qd)
-        tau_bias = self._singularity_bias_tau(q, qd, eta_val)
-        tau_ns   = np.zeros_like(q)
-        if eta_val < 0.7:
-            J_dyn_pinv = np.linalg.solve(M, J_xy.T @ Lambda_reg)
-            N = np.eye(n) - J_dyn_pinv @ J_xy
-            qdd_manip, _ = add_nullspace_manip(np.zeros(n), self.env, q, qd, J_xy, self.kp, eta_val)
-            tau_ns = ((1.0 - eta_val)**2) * self._manip_gain * (N.T @ (M @ qdd_manip + h))
+        # Add bias / damping
+        tau_des = tau_task + tau_ns + tau_bias - 0.06 * qd
 
-        tau_des = tau_task + tau_lim + tau_bias + tau_ns
+        # -----------------------------------------------------------------
+        # Torque feasibility scaling (muscle limits) (FIX F)
+        # -----------------------------------------------------------------
+        Fmax_vec = getattr(self, "_Fmax_cache", None)
+        if Fmax_vec is None:  # fixed by the muscle; cache on first use
+            Fmax_vec = get_Fmax_vec(self.env, R.shape[1])
+            self._Fmax_cache = Fmax_vec
+        tau_feas = np.sum(np.abs(R) * Fmax_vec[None, :], axis=1)  # conservative bound
+        tau_clip = self._tau_scale_safety * tau_feas
 
-        # ----- muscles / allocation -----
-        lenvel = geom[:, :2, :]
-        Fmax_vec = get_Fmax_vec(self.env, R.shape[1])
+        raw_scale = float(np.min(tau_clip / (np.abs(tau_des) + 1e-12)))
+        raw_scale = float(np.clip(raw_scale, 0.0, 1.0))
 
-        # feasibility-aware torque clip
-        tau_feas = (np.abs(R) @ Fmax_vec)
-        tau_clip_dyn = 0.9 * float(np.min(tau_feas))
-        tau_clip_use = (max(0.3*self._tau_clip, min(self._tau_clip, tau_clip_dyn))
-                        if eta_val < 0.6 else self._tau_clip)
+        if raw_scale < self._tau_scale_apply_thresh:
+            tau_des = tau_des * raw_scale
+            tau_scale_applied = raw_scale
+        else:
+            tau_scale_applied = 1.0
 
-        tau_des = np.clip(tau_des, -tau_clip_use, tau_clip_use)
-        self._tau_filt = (1 - self._tau_alpha) * self._tau_filt + self._tau_alpha * tau_des
-        tau_des = self._tau_filt
+        # -----------------------------------------------------------------
+        # Muscle allocation + activation inversion
+        # -----------------------------------------------------------------
+        F_des, mus_diag = solve_muscle_forces(tau_des, R, Fmax_vec, eta, self.mp)
 
-        # allocation & optional adaptive internal force
-        names = self.env.muscle.state_name
-        idx_flpe = names.index("force-length PE")
+        idx_flpe = getattr(self, "_idx_flpe", None)
+        if idx_flpe is None:
+            idx_flpe = self.env.muscle.state_name.index("force-length PE")
+            self._idx_flpe = idx_flpe
         flpe = self.env.states["muscle"][0, idx_flpe, :]
-        F_des, mus_diag = solve_muscle_forces(tau_des, R, Fmax_vec, eta_val, self.mp)
 
-        if self.p.enable_internal_force:
-            scale_if = 0.0
-            if eta_val < 0.6: scale_if = (0.6 - eta_val) * 0.6
-            if condR > self._cond_high: scale_if = max(scale_if, 0.5)
-            if scale_if > 0.0:
-                a0_vec = np.full(F_des.shape[0], self.p.cocon_a0)
-                af0    = active_force_from_activation(a0_vec, lenvel, self.env.muscle)
-                F_bias = Fmax_vec * (af0 + flpe)
-                F_des  = apply_internal_force_regulation(
-                    -R, F_des, F_bias, Fmax_vec,
-                    eps=self.p.eps, linesearch_eps=self.p.linesearch_eps,
-                    linesearch_safety=self.p.linesearch_safety,
-                    scale=float(np.clip(scale_if, 0.0, 0.6)),
-                )
+        lenvel = geom[:, :2, :]  # (B, 2, n_muscle) -> [len, vel]
+        a = force_to_activation_bisect(
+            F_des, lenvel, self.env.muscle, flpe, Fmax_vec,
+            iters=self.p.bisect_iters,
+        )
 
-        a = force_to_activation_bisect(F_des, lenvel, self.env.muscle, flpe, Fmax_vec,
-                                       iters=self.p.bisect_iters)
         af_now = active_force_from_activation(a, lenvel, self.env.muscle)
         F_pred = Fmax_vec * (af_now + flpe)
-        F_corr = saturation_repair_tau(-R, F_pred, a,
-                                       self.env.muscle.min_activation, 1.0,
-                                       Fmax_vec, tau_des=tau_des)
-        if np.any(np.abs(F_corr - F_pred) > 1e-9):
-            a = force_to_activation_bisect(F_corr, lenvel, self.env.muscle, flpe, Fmax_vec,
-                                           iters=max(4, self.p.bisect_iters - 4))
 
-        # diag
-        kin_diag = pack_diag(sminJ=sminJ, lamJ=lamJ, alpha_J=alpha_J)
-        sm_diag  = pack_diag(
-            s1=float(s[0]), s2=float(s[1]),
-            phi1=float(self.p.phi[0]), phi2=float(self.p.phi[1]),
-            tau_clip=float(tau_clip_use), lam_os=float(lam_os_val),
-            eta=float(eta_val), eta2=float(eta2), w_js=float(w), condR=float(condR),
+        F_corr = saturation_repair_tau(
+            -R, F_pred, a,
+            self.env.muscle.min_activation, 1.0,
+            Fmax_vec, tau_des=tau_des,
         )
-        diag = merge_diag(kin_diag, dyn_diag, mus_diag, sm_diag)
+        if np.any(np.abs(F_corr - F_pred) > 1e-9):
+            a = force_to_activation_bisect(
+                F_corr, lenvel, self.env.muscle, flpe, Fmax_vec,
+                iters=max(4, self.p.bisect_iters - 4),
+            )
+
+        # -----------------------------------------------------------------
+        # Diagnostics
+        # -----------------------------------------------------------------
+        kin_diag = pack_diag(sminJ=sminJ, lamJ=lamJ, alpha_J=alpha_J, k_manip=0.0)
+
+        diag = merge_diag(
+            kin_diag, dyn_diag, ns_diag, mus_diag,
+            pack_diag(
+                lam_os=lam_os,
+                eta=float(eta),
+                eta2=float(eta2),
+                condR=float(condR),
+                condJ=float(condJ),
+                w=float(w),
+                tau_scale=float(tau_scale_applied),
+                tau_scale_raw=float(raw_scale),
+                eta_eq=float(eta_eq),
+                eta_sw=float(eta_sw),
+            ),
+        )
 
         return {
-            "tau_des": tau_des, "R": R, "Fmax": Fmax_vec, "F_des": F_des, "act": a,
-            "q": q, "qd": qd, "x": x, "xd": xd, "xref_tuple": (x_d, xd_d, xdd_d),
-            "eta": eta2, "diag": diag,
+            "tau_des": tau_des,
+            "R": R,
+            "Fmax": Fmax_vec,
+            "F_des": F_des,
+            "act": a,
+            "q": q,
+            "qd": qd,
+            "x": x,
+            "xd": xd,
+            "xref_tuple": (x_d, xd_d_g, xdd_d_g),
+            "eta": eta2,
+            "diag": diag,
         }
 
