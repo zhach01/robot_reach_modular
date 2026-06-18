@@ -33,7 +33,7 @@ from __future__ import annotations
 import numpy as np
 from dataclasses import dataclass
 
-from utils.math_utils import matrix_sqrt_spd, matrix_isqrt_spd
+from utils.math_utils import matrix_sqrt_spd, matrix_isqrt_spd, matrix_sqrt_isqrt_spd
 from muscles.muscle_tools import (
     get_Fmax_vec,
     force_to_activation_bisect,
@@ -444,8 +444,7 @@ class EnergyTankController:
         P_spend  = max(0.0, -P_K)   # increasing stiffness costs energy
 
         # Inertia-shaped damping Kv (SPD)
-        Lam_s  = matrix_sqrt_spd(Lambda)
-        Lam_is = matrix_isqrt_spd(Lambda)
+        Lam_s, Lam_is = matrix_sqrt_isqrt_spd(Lambda)  # one eigh, not two
         Kv = (
             2.0
             * float(self.p.zeta)

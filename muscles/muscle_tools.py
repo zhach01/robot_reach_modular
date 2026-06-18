@@ -31,11 +31,19 @@ def active_force_from_activation(a, geom_lenvel, muscle):
     if a.ndim == 1:             # (m,)   -> (1, m)
         a = a[np.newaxis, ...]
     out = muscle._integrate(0.0, d, a, geom_lenvel)
-   
-    names = muscle.state_name
-    ia = names.index("activation")
-    ifl = names.index("force-length CE")
-    ifv = names.index("force-velocity CE")
+
+    # the 3 channel indices are fixed for a given muscle; memoize them on it.
+    # This is called ~iters times per bisect call -> avoids 3 list.index() each.
+    idx = getattr(muscle, "_aff_channel_idx", None)
+    if idx is None:
+        names = muscle.state_name
+        idx = (
+            names.index("activation"),
+            names.index("force-length CE"),
+            names.index("force-velocity CE"),
+        )
+        muscle._aff_channel_idx = idx
+    ia, ifl, ifv = idx
     return out[0, ia, :] * out[0, ifl, :] * out[0, ifv, :]
 
 
@@ -53,8 +61,9 @@ def force_to_activation_bisect(F_des, geom_lenvel, muscle, flpe, Fmax, iters=22)
     for _ in range(iters):
         mid = 0.5 * (lo + hi)
         af = active_force_from_activation(mid, geom_lenvel, muscle)
-        hi = np.where(af > target_active, mid, hi)
-        lo = np.where(af > target_active, lo, mid)
+        above = af > target_active  # shared by both bisection updates
+        hi = np.where(above, mid, hi)
+        lo = np.where(above, lo, mid)
     return np.clip(0.5 * (lo + hi), muscle.min_activation, 1.0)
 
 

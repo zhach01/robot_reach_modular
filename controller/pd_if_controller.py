@@ -1,7 +1,7 @@
 # controller/pd_if_controller.py
 import numpy as np
 from dataclasses import dataclass
-from utils.math_utils import matrix_sqrt_spd, matrix_isqrt_spd
+from utils.math_utils import matrix_sqrt_spd, matrix_isqrt_spd, matrix_sqrt_isqrt_spd
 from utils.linear_utils import nnls_small_active_set
 from muscles.muscle_tools import (
     get_Fmax_vec,
@@ -143,8 +143,7 @@ class PDIFController:
         ed_x = xd_d - xd
 
         Kp_mat = np.diag(self.p.Kp_x)
-        Lam_sqrt = matrix_sqrt_spd(Lambda)
-        Lam_isqrt = matrix_isqrt_spd(Lambda)
+        Lam_sqrt, Lam_isqrt = matrix_sqrt_isqrt_spd(Lambda)  # one eigh, not two
         Kv_mat = (
             2.0 * Lam_sqrt @ matrix_sqrt_spd(Lam_isqrt @ Kp_mat @ Lam_isqrt) @ Lam_sqrt
         )

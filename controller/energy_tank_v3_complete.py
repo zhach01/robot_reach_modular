@@ -40,7 +40,7 @@ import numpy as np
 from dataclasses import dataclass, field
 from typing import Optional, Callable, Dict, Any, Tuple, List
 
-from utils.math_utils import matrix_sqrt_spd, matrix_isqrt_spd
+from utils.math_utils import matrix_sqrt_spd, matrix_isqrt_spd, matrix_sqrt_isqrt_spd
 from muscles.muscle_tools import (
     get_Fmax_vec,
     force_to_activation_bisect,
@@ -508,8 +508,7 @@ class EnergyTankV3Controller:
         # =====================================================================
         # [5] INERTIA-WEIGHTED DAMPING (from Lambda and K_now)
         # =====================================================================
-        Lam_s = matrix_sqrt_spd(Lambda)
-        Lam_is = matrix_isqrt_spd(Lambda)
+        Lam_s, Lam_is = matrix_sqrt_isqrt_spd(Lambda)  # one eigh, not two
         Kv = (
             2.0 * float(self.p.zeta)
             * Lam_s
