@@ -35,3 +35,4 @@ motornet/training/
 synergy/training/
 synergy_model.npz
 results/
+_run_capture.py

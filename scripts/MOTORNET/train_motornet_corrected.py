@@ -43,13 +43,8 @@ from config import PlantConfig, ControlToggles, ControlGains, Numerics, Internal
 from tasks.numpy.random_reach import Task as RandomReachTask
 from trajectory.numpy.minjerk import MinJerkLinearTrajectory, MinJerkParams
 
-# Expert controller: prefer optimized PDIF if present
-try:
-    from controller.numpy.pd_if_controller import PDIFController as OptimizedPDIFController, PDIFParams as OptimizedPDIFParams
-    HAS_OPT_PDIF = True
-except Exception:
-    HAS_OPT_PDIF = False
-    from controller.numpy.pd_if_legacy import PDIFController, PDIFParams
+# Expert controller: optimized PD+IF (canonical)
+from controller.numpy.pd_if_controller import PDIFController, PDIFParams
 
 # MotorNet controller + helper
 from controller.numpy.motornet_fixed import MotorNetFixed, MotorNetFixedParams, activation_target_to_excitation
@@ -126,52 +121,27 @@ def collect_dataset(
 
     env, arm, q0 = build_env(pc)
 
-    # Expert controller
-    if HAS_OPT_PDIF:
-        # match your best-performing defaults (you can tune here)
-        p_exp = OptimizedPDIFParams(
-            Kp_task=np.array([1600.0, 1600.0]),
-            damping_ratio=0.7,
-            Kff=1.0,
-            enable_inertia_comp=bool(getattr(toggles, "enable_inertia_comp", True)),
-            enable_gravity_comp=bool(getattr(toggles, "enable_gravity_comp", True)),
-            enable_coriolis_comp=bool(getattr(toggles, "enable_velocity_comp", True)),
-            use_critical_damping=True,
-            enable_nullspace=True,
-            Kp_null=20.0,
-            Kd_null=5.0,
-            eps=float(getattr(num, "eps", 1e-6)),
-            lam_os_max=float(getattr(num, "lam_os_max", 200.0)),
-            sigma_thresh=float(getattr(num, "sigma_thresh", 1e-4)),
-            gate_pow=float(getattr(num, "gate_pow", 2.0)),
-            bisect_iters=int(getattr(ifc, "bisect_iters", 12)),
-            enable_internal_force=False,
-            cocon_level=0.0,
-        )
-        expert = OptimizedPDIFController(env, arm, p_exp)
-    else:
-        # fallback expert PDIF
-        p_exp = PDIFParams(
-            Kp_x=np.array([1200.0, 1200.0]),
-            Kff_x=np.array([1.0, 1.0]),
-            Kp_q=np.array([10.0, 10.0]),
-            Kd_q=np.array([2.0, 2.0]),
-            eps=float(getattr(num, "eps", 1e-6)),
-            lam_os_smin_target=0.02,
-            lam_os_max=float(getattr(num, "lam_os_max", 200.0)),
-            sigma_thresh=float(getattr(num, "sigma_thresh", 1e-4)),
-            gate_pow=float(getattr(num, "gate_pow", 2.0)),
-            enable_internal_force=False,
-            enable_inertia_comp=True,
-            enable_gravity_comp=True,
-            enable_velocity_comp=True,
-            enable_joint_damping=False,
-            cocon_a0=0.0,
-            bisect_iters=int(getattr(ifc, "bisect_iters", 12)),
-            linesearch_eps=1e-5,
-            linesearch_safety=0.5,
-        )
-        expert = PDIFController(env, arm, p_exp)
+    # Expert controller (optimized PD+IF)
+    p_exp = PDIFParams(
+        Kp_task=np.array([1600.0, 1600.0]),
+        damping_ratio=0.7,
+        Kff=1.0,
+        enable_inertia_comp=bool(getattr(toggles, "enable_inertia_comp", True)),
+        enable_gravity_comp=bool(getattr(toggles, "enable_gravity_comp", True)),
+        enable_coriolis_comp=bool(getattr(toggles, "enable_velocity_comp", True)),
+        use_critical_damping=True,
+        enable_nullspace=True,
+        Kp_null=20.0,
+        Kd_null=5.0,
+        eps=float(getattr(num, "eps", 1e-6)),
+        lam_os_max=float(getattr(num, "lam_os_max", 200.0)),
+        sigma_thresh=float(getattr(num, "sigma_thresh", 1e-4)),
+        gate_pow=float(getattr(num, "gate_pow", 2.0)),
+        bisect_iters=int(getattr(ifc, "bisect_iters", 12)),
+        enable_internal_force=False,
+        cocon_level=0.0,
+    )
+    expert = PDIFController(env, arm, p_exp)
 
     expert.reset(q0)
 
