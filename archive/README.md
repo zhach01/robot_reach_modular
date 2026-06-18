@@ -16,3 +16,16 @@ Kept for reference; not on any runtime path.
   original (pre-optimization) PD-IF controllers with the Kp_x gain API. All
   scripts and tests now use the canonical optimized `pd_if_controller`
   (numpy + torch). Kept here only for historical reference.
+
+## Passivity: faulty / superseded implementations (archived)
+Comparison on a reach (lower RMSE = better tracking):
+- `controller/numpy/energy_tank_controller.py` (canonical, **2.15 mm**) — kept.
+- `controller/numpy/energy_tank_cbf_qp.py` — **FAULTY: diverges to 15.9 cm** (max
+  49 cm). Confirmed a control-formulation bug, not the solver: it still diverges
+  with a real QP solver (osqp). Its docstring claims <1 cm. Archived.
+- `controller/numpy/energy_tank_hybrid.py` — mediocre (2.4 cm). Archived.
+- `scripts/PASSIVITY/random_reach_main_hybrid{,2}.py` — demos/comparison of the
+  two archived controllers (hybrid2 even recommended Hybrid without comparing
+  against the much-better EnergyTankController). Archived.
+- `tests/test_cbf_qp_fallback.py` — tested the QP fallback inside the archived
+  CBF-QP. Removed.
