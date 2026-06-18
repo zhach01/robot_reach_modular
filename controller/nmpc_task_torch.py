@@ -439,22 +439,23 @@ class NonlinearMPCControllerTorch:
         for _ in range(1, N + 1):
             As.append(A @ As[-1])                          # As[k] = A^k
 
+        # Precompute As[m] @ B once (each appears in many T blocks). As are
+        # constant (no grad); B carries grad from Lambda_reg, and assigning the
+        # precomputed products into T preserves the graph. Bit-identical.
+        ABs = [As[m] @ B for m in range(N)]
         T = _zeros((nY, nU), like)
         for k in range(N):
             for j in range(k):
-                # effect of u_j on y_k: A^{k-1-j} B
-                T[4 * k : 4 * k + 4, 2 * j : 2 * j + 2] = As[k - 1 - j] @ B
+                T[4 * k : 4 * k + 4, 2 * j : 2 * j + 2] = ABs[k - 1 - j]
 
-        # --- Affine stack: d_stack, Sy0_stack ---
+        # --- Affine stack: d_stack, Sy0_stack --- (Sy0 vectorized; grad flows via y0)
+        Sy0_stack = (torch.stack(As[:N], dim=0) @ y0).reshape(-1)
         d_stack   = _zeros((nY,), like)
-        Sy0_stack = _zeros((nY,), like)
         for k in range(N):
             d_k = _zeros((4,), like)
             for i in range(k):
                 d_k = d_k + As[k - 1 - i] @ c_list[i]
-            idx = 4 * k
-            d_stack[idx : idx + 4]   = d_k
-            Sy0_stack[idx : idx + 4] = As[k] @ y0
+            d_stack[4 * k : 4 * k + 4] = d_k
 
         # --- Reference stack Yref = [x_ref; xd_ref]_{k=0..N-1} ---
         Yref = _zeros((nY,), like)

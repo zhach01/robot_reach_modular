@@ -289,21 +289,24 @@ class NonlinearMPCController:
         for _ in range(1, N+1):
             As.append(A @ As[-1])
 
+        # Precompute As[m] @ B once (each appears in many T blocks) instead of
+        # recomputing the (4,4)@(4,2) matmul inside the O(N^2) double loop.
+        # Bit-identical; the inner loop becomes pure slice placement.
+        ABs = [As[m] @ B for m in range(N)]
         T = np.zeros((nY, nU))
         for k in range(N):
             for j in range(k):
-                T[4*k:4*k+4, 2*j:2*j+2] = As[k-1-j] @ B
+                T[4*k:4*k+4, 2*j:2*j+2] = ABs[k-1-j]
 
-        # affine stack with stage-wise c_k
+        # affine stack with stage-wise c_k. Sy0 vectorizes fully; d_stack keeps
+        # the lower-triangular accumulation (same summation order -> bit-identical).
+        Sy0_stack = (np.stack(As[:N]) @ y0).reshape(-1)
         d_stack   = np.zeros(nY)
-        Sy0_stack = np.zeros(nY)
         for k in range(N):
             d_k = np.zeros(4)
             for i in range(k):
                 d_k += As[k-1-i] @ c_list[i]
-            idx = 4*k
-            d_stack[idx:idx+4]   = d_k
-            Sy0_stack[idx:idx+4] = As[k] @ y0
+            d_stack[4*k:4*k+4] = d_k
 
         # reference stack (full preview)
         Yref = np.zeros(nY)
