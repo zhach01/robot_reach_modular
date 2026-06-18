@@ -22,7 +22,7 @@ from trajectory.numpy.minjerk import MinJerkLinearTrajectory, MinJerkParams
 from sim.numpy.simulator import TargetReachSimulator
 
 # pick a “teacher” controller that TRACKS well (recommended: PD/IF)
-from controller.numpy.pd_if_controller import PDIFController, PDIFParams
+from controller.numpy.pd_if_legacy import PDIFController, PDIFParams
 # or you can swap to your working synergy-hybrid controller if you prefer:
 # from controller.numpy.synergy_controller import SynergyController, SynergyParams
 

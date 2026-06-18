@@ -14,7 +14,7 @@ from config import (
 )
 from tasks.numpy.center_out import Task as CenterOutTask
 from trajectory.numpy.minjerk import MinJerkLinearTrajectory, MinJerkParams
-from controller.numpy.pd_if_controller import PDIFController, PDIFParams
+from controller.numpy.pd_if_legacy import PDIFController, PDIFParams
 from sim.numpy.simulator import TargetReachSimulator
 from plotting.plots import plot_all, make_animations, hold_anims
 import matplotlib.pyplot as plt

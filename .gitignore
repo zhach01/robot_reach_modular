@@ -34,3 +34,4 @@ ANFIS/saved_model/
 motornet/training/
 synergy/training/
 synergy_model.npz
+results/

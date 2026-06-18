@@ -45,11 +45,11 @@ from trajectory.numpy.minjerk import MinJerkLinearTrajectory, MinJerkParams
 
 # Expert controller: prefer optimized PDIF if present
 try:
-    from controller.numpy.pd_if_optimized import OptimizedPDIFController, OptimizedPDIFParams
+    from controller.numpy.pd_if_controller import PDIFController as OptimizedPDIFController, PDIFParams as OptimizedPDIFParams
     HAS_OPT_PDIF = True
 except Exception:
     HAS_OPT_PDIF = False
-    from controller.numpy.pd_if_controller import PDIFController, PDIFParams
+    from controller.numpy.pd_if_legacy import PDIFController, PDIFParams
 
 # MotorNet controller + helper
 from controller.numpy.motornet_fixed import MotorNetFixed, MotorNetFixedParams, activation_target_to_excitation
