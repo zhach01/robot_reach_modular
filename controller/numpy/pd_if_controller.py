@@ -43,6 +43,20 @@ from muscles.numpy.muscle_tools import (
 )
 
 
+def _safe_cond(A: np.ndarray, fallback: float = 1e9) -> float:
+    """Condition number with a finite fallback (mirrors sliding-mode helper)."""
+    try:
+        c = float(np.linalg.cond(A))
+        return c if np.isfinite(c) else fallback
+    except Exception:
+        return fallback
+
+
+def _blend_weight_from_cond(cond_val: float, lo: float, hi: float) -> float:
+    """0 → 1 smoothstep blend over [lo, hi]."""
+    return float(np.clip((cond_val - lo) / (hi - lo), 0.0, 1.0))
+
+
 @dataclass
 class PDIFParams:
     """Parameters for optimized PD+IF controller."""
@@ -86,6 +100,19 @@ class PDIFParams:
     # Internal force (co-contraction) - typically not needed with good tracking
     enable_internal_force: bool = False
     cocon_level: float = 0.03
+
+    # --- Singularity safety (same protection as the sliding-mode controller) ---
+    # Blend to a joint-space fallback on cond(J) near the full-extension Jacobian
+    # singularity, with an elbow floor, plus torque-feasibility scaling vs muscle
+    # limits. Prevents the large transient excursion on far reaches.
+    enable_singularity_blend: bool = True
+    cond_low: float = 20.0
+    cond_high: float = 80.0
+    elbow_min_rad: float = np.deg2rad(2.0)
+    Kp_js: np.ndarray = field(default_factory=lambda: np.array([12.0, 10.0]))
+    Kd_js: np.ndarray = field(default_factory=lambda: np.array([2.5, 2.0]))
+    tau_scale_safety: float = 0.95
+    tau_scale_apply_thresh: float = 0.7
 
 
 class PDIFController:
@@ -273,7 +300,28 @@ class PDIFController:
         names = self.env.muscle.state_name
         idx_flpe = names.index("force-length PE")
         flpe = self.env.states["muscle"][0, idx_flpe, :]
-        
+
+        # === Singularity safety (mirrors the sliding-mode controller) ===
+        if self.p.enable_singularity_blend:
+            # Blend to a joint-space fallback on cond(J) near the kinematic
+            # singularity (cond(R) is blind to it). Elbow floor keeps the
+            # fallback target out of full extension.
+            condJ = _safe_cond(J_xy)
+            w_cr = _blend_weight_from_cond(condJ, self.p.cond_low, self.p.cond_high)
+            w_eta = float(np.clip(1.0 - eta, 0.0, 1.0))
+            w = float(np.clip(max(w_cr, 0.5 * w_eta), 0.0, 1.0))
+            q_star = self.qref.copy()
+            q_star[1] = max(float(q_star[1]), self.p.elbow_min_rad)
+            tau_js = self.p.Kp_js * (q_star - q) + self.p.Kd_js * (-qd)
+            tau_des = (1.0 - w) * tau_des + w * tau_js
+
+        # Torque-feasibility scaling against the muscle limits.
+        tau_feas = np.sum(np.abs(R) * Fmax_vec[None, :], axis=1)
+        tau_clip = self.p.tau_scale_safety * tau_feas
+        raw_scale = float(np.clip(np.min(tau_clip / (np.abs(tau_des) + 1e-12)), 0.0, 1.0))
+        if raw_scale < self.p.tau_scale_apply_thresh:
+            tau_des = tau_des * raw_scale
+
         # Robust muscle solve
         F_des, mus_diag = solve_muscle_forces(tau_des, R, Fmax_vec, eta, self.mp)
         

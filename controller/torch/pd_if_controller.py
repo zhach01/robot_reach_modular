@@ -21,6 +21,7 @@ it defaults off and neither demo uses it. The original pre-optimization gain API
 archive/controller/torch/pd_if_legacy.py for historical reference.
 """
 
+import math
 from dataclasses import dataclass, field
 from typing import Any, Dict, List
 
@@ -100,6 +101,18 @@ class PDIFParams:
     # internal force (co-contraction)
     enable_internal_force: bool = False
     cocon_level: float = 0.03
+
+    # singularity safety (same protection as the sliding-mode controller):
+    # cond(J) blend to a joint-space fallback with an elbow floor, plus
+    # torque-feasibility scaling vs the muscle limits.
+    enable_singularity_blend: bool = True
+    cond_low: float = 20.0
+    cond_high: float = 80.0
+    elbow_min_rad: float = math.radians(2.0)
+    Kp_js: Any = field(default_factory=lambda: [12.0, 10.0])
+    Kd_js: Any = field(default_factory=lambda: [2.5, 2.0])
+    tau_scale_safety: float = 0.95
+    tau_scale_apply_thresh: float = 0.7
 
 
 class PDIFController:
@@ -311,6 +324,27 @@ class PDIFController:
             flpe = self.env.states["muscle"][:, self._idx_flpe, :]
         else:
             flpe = torch.zeros((B, Mm), device=q.device, dtype=q.dtype)
+
+        # === Singularity safety (mirrors the sliding-mode / numpy controller) ===
+        if self.p.enable_singularity_blend:
+            condJ = torch.linalg.cond(J_xy)                              # (B,)
+            condJ = torch.where(torch.isfinite(condJ), condJ, torch.full_like(condJ, 1e9))
+            w_cr = torch.clamp((condJ - self.p.cond_low) / (self.p.cond_high - self.p.cond_low), 0.0, 1.0)
+            w_eta = torch.clamp(1.0 - eta, 0.0, 1.0)
+            w = torch.clamp(torch.maximum(w_cr, 0.5 * w_eta), 0.0, 1.0)  # (B,)
+            q_star = qref.clone()
+            q_star[:, 1] = torch.clamp(q_star[:, 1], min=float(self.p.elbow_min_rad))
+            Kp_js = _to_tensor_like(self.p.Kp_js, q[0])
+            Kd_js = _to_tensor_like(self.p.Kd_js, q[0])
+            tau_js = Kp_js * (q_star - q) - Kd_js * qd                   # (B,n)
+            tau_des = (1.0 - w).view(B, 1) * tau_des + w.view(B, 1) * tau_js
+
+        # Torque-feasibility scaling vs muscle limits.
+        tau_feas = torch.sum(torch.abs(R) * Fmax_vec.view(1, 1, -1), dim=2)  # (B,n)
+        tau_clip = self.p.tau_scale_safety * tau_feas
+        raw_scale = torch.clamp(torch.min(tau_clip / (torch.abs(tau_des) + 1e-12), dim=1)[0], 0.0, 1.0)  # (B,)
+        apply = raw_scale < self.p.tau_scale_apply_thresh
+        tau_des = torch.where(apply.view(B, 1), tau_des * raw_scale.view(B, 1), tau_des)
 
         F_des, mus_diag = solve_muscle_forces(tau_des, R, Fmax_vec, eta, self.mp)
 
