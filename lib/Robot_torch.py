@@ -451,6 +451,10 @@ class Serial(Robot):
         self._batched = batched
         self._B = B
         self._jointsPositions = t
+        # Bump a version counter so forward-kinematics callers can cache frames
+        # per q and avoid recomputing the identical FK 5-10x within one dynamics
+        # call (forwardHTM/forwardCOMHTM are pure functions of q + constant DH).
+        self._q_version = getattr(self, "_q_version", 0) + 1
         # Auto-refresh DH tables if we own them
         if self._auto_refresh_dh:
             if self.user_DH is None:

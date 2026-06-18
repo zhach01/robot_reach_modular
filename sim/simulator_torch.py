@@ -306,9 +306,16 @@ class SimulatorTorch:
         dtype = getattr(env, "dtype", torch.get_default_dtype())
         self.logs = LogBufferTorch(self.steps, env.n_muscles, device=device, dtype=dtype)
 
+    @torch.no_grad()
     def _run_controller(self):
         """
         Controller-mode simulation loop (Torch version of TargetReachSimulator.run).
+
+        Runs under torch.no_grad(): a classical-controller rollout produces a
+        LogBuffer for analysis and is never backpropagated, so building the
+        per-step autograd graph (matmuls, matrix sqrts, the muscle-force
+        bisection, etc.) is pure waste. Forward values are unchanged. (Policy/
+        BPTT training uses its own grad-enabled rollouts, not this method.)
         """
         dt = float(self.env.dt)
 
@@ -317,6 +324,12 @@ class SimulatorTorch:
         dof = int(self.env.skeleton.dof)
         q0 = joint0[:dof].clone()
         self.controller.reset(q0)
+
+        # Hoist the constant force-channel index (was a per-step list scan) and
+        # the zero external-load buffers (allocated once, reused each step).
+        idx_force = self.env.muscle.state_name.index("force")
+        endpoint_load = None
+        joint_load = None
 
         terminated = False
 
@@ -349,8 +362,9 @@ class SimulatorTorch:
             device = self.env.device
             dtype = self.env.dtype
 
-            endpoint_load = torch.zeros((B, 2), device=device, dtype=dtype)
-            joint_load = torch.zeros((B, 2), device=device, dtype=dtype)
+            if endpoint_load is None or endpoint_load.shape[0] != B:
+                endpoint_load = torch.zeros((B, 2), device=device, dtype=dtype)
+                joint_load = torch.zeros((B, 2), device=device, dtype=dtype)
 
             obs, reward, terminated, truncated, info = self.env.step(
                 act_t,
@@ -359,9 +373,7 @@ class SimulatorTorch:
                 joint_load=joint_load,
             )
 
-            # real torques from current muscle forces
-            names = self.env.muscle.state_name
-            idx_force = names.index("force")
+            # real torques from current muscle forces (idx_force hoisted above)
             geom = self.env.states["geometry"]             # (B, 2+DOF, M)
             R = geom[:, 2 : 2 + dof, :][0]                 # (DOF,M)
             muscle_state = self.env.states["muscle"]       # (B, channels, M)

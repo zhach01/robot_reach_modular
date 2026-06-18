@@ -609,12 +609,17 @@ class Effector:
         joint_vel = states["joint"][:, self.dof :]  # (B,DOF)
         B = states["joint"].shape[0]
 
-        endpoint_load = torch.as_tensor(
-            endpoint_load, dtype=self.dtype, device=self.device
-        )
-        joint_load = torch.as_tensor(
-            joint_load, dtype=self.dtype, device=self.device
-        )
+        # step() already converts these to the right dtype/device; only convert
+        # when a non-tensor (or mismatched) load is passed directly. Skips 2
+        # redundant as_tensor calls per ode (8/step under RK4).
+        if not (torch.is_tensor(endpoint_load)
+                and endpoint_load.dtype == self.dtype
+                and endpoint_load.device == self.device):
+            endpoint_load = torch.as_tensor(endpoint_load, dtype=self.dtype, device=self.device)
+        if not (torch.is_tensor(joint_load)
+                and joint_load.dtype == self.dtype
+                and joint_load.device == self.device):
+            joint_load = torch.as_tensor(joint_load, dtype=self.dtype, device=self.device)
 
         if endpoint_load.dim() == 1:
             endpoint_load = endpoint_load.view(1, -1)
@@ -695,8 +700,12 @@ class Effector:
         assert torch.all(vel <= self.vel_upper_bound)
 
         s = torch.cat([pos, vel], dim=1)
-        if batch_size == 1 and s.shape[0] == 1:
+        # FIX: Don't repeat if s already has the correct batch size
+        if s.shape[0] == batch_size:
             return s
+        if s.shape[0] == 1:
+            return s.repeat(batch_size, 1)
+        # Fallback for edge cases
         return s.repeat(batch_size, 1)
 
     def _set_state_limit_bounds(self, lb, ub) -> Tensor:

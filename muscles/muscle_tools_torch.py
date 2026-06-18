@@ -214,31 +214,31 @@ def active_force_from_activation(a: Any, geom_lenvel: Any, muscle) -> Tensor:
             f"geom_lenvel must be (2,M) or (B,2,M), got {tuple(gl.shape)}"
         )
 
-    # State: (B, C, M) with C = len(state_name)
+    # State: (B, C, M) with C = len(state_name). Channel indices are constant
+    # for a given muscle -> memoize them on the muscle (this helper runs 5-7x/step).
     names = muscle.state_name
     C = len(names)
-    state0 = torch.zeros((B, C, M), dtype=dtype, device=device)
+    idx = getattr(muscle, "_aff_channel_idx", None)
+    if idx is None:
+        if "activation" not in names:
+            raise ValueError(
+                f"active_force_from_activation: muscle.state_name must contain "
+                f"'activation', got {names}"
+            )
+        idx = (names.index("activation"),
+               names.index("force-length CE"),
+               names.index("force-velocity CE"))
+        muscle._aff_channel_idx = idx
+    ia, ifl, ifv = idx
 
-    # Find activation channel and embed a in it
-    if "activation" not in names:
-        raise ValueError(
-            f"active_force_from_activation: muscle.state_name must contain 'activation', "
-            f"got {names}"
-        )
-    ia = names.index("activation")
-    # state0[:, ia, :] has shape (B,M)
-    state0[:, ia, :] = a_b
+    state0 = torch.zeros((B, C, M), dtype=dtype, device=device)
+    state0[:, ia, :] = a_b   # (B,M)
 
     # Zero state derivative (dt=0 -> no evolution anyway)
     dstate0 = torch.zeros_like(state0)
 
     # dt = 0.0 to evaluate instantaneous force contributions
-    # ✔ uses Muscles API: _integrate(dt, state_derivative, muscle_state, geom_lenvel)
     out = muscle._integrate(0.0, dstate0, state0, gl_b)  # (B, C, M)
-
-    # Read back activation, flce, fvce channels
-    ifl = names.index("force-length CE")
-    ifv = names.index("force-velocity CE")
 
     act_ch = out[:, ia, :]   # (B,M)
     flce   = out[:, ifl, :]  # (B,M)
@@ -400,11 +400,16 @@ def force_to_activation_bisect(
     ia = names.index("activation")
     ifl = names.index("force-length CE")
     ifv = names.index("force-velocity CE")
-    state0 = torch.zeros((B, C, M), dtype=dtype, device=device)
-    dstate0 = torch.zeros_like(state0)
+    # One scratch state buffer reused across all bisection iterations: only the
+    # activation channel changes (others stay zero), so overwrite `ia` in place
+    # each step instead of cloning a fresh (B,C,M) tensor every iteration (the
+    # clone was the bulk of this call's cost). The bisection is non-
+    # differentiable (output comes from boolean `af > target` comparisons), so
+    # reusing the buffer is result-identical and grad-safe.
+    st = torch.zeros((B, C, M), dtype=dtype, device=device)
+    dstate0 = torch.zeros_like(st)
 
     def _active_force(mid: Tensor) -> Tensor:
-        st = state0.clone()
         st[:, ia, :] = mid
         out = muscle._integrate(0.0, dstate0, st, gl_b)  # (B,C,M)
         return out[:, ia, :] * out[:, ifl, :] * out[:, ifv, :]
