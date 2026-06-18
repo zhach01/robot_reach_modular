@@ -80,11 +80,14 @@ def inertiaMatrixCOM(robot: object, symbolic=False):
         # Rotation matrix of the current Center of Mass (the sum is because of the way Python indexes)
         R = fkCOMHTM[j + 1][0:3, 0:3]
 
-        # Inertia with respect to center of mass: Icom = R^T * I * R
+        # Body inertia expressed in the WORLD frame: Icom = R * I_body * R^T
+        # (R maps body->world, so the inertia rotates as R I R^T; the previous
+        # R^T I R was the inverse rotation — a no-op for this planar arm because
+        # only Izz is selected, but wrong for any out-of-plane / 3-D robot. audit)
         Icom = (
-            R.T * robot.symbolicInertia[j] * R
+            R * robot.symbolicInertia[j] * R.T
             if symbolic
-            else R.T.dot(robot.inertia[j]).dot(R)
+            else R.dot(robot.inertia[j]).dot(R.T)
         )
 
         # (m * Jv^T * JV) + (Jw^T * Icom * Jw)

@@ -99,6 +99,7 @@ class NMPCParams:
     lam_du: float  = 2e-3          # input slew penalty (0 disables)
     Fmax: float = 600.0            # task-force clip (higher helps fast tracking)
     tau_clip: float = 600.0        # joint torque clip
+    proj_iters: int = 40           # projected-gradient iters for box-constrained solve (audit H4)
 
     # guards (original)
     eps: float = 1e-8
@@ -259,7 +260,9 @@ class NonlinearMPCController:
         """
         # Op-space metric & regularization
         S_os = J_xy @ np.linalg.solve(M, J_xy.T)               # Λ^{-1}
-        _, lam_os, _, _, _, _, _ = op_space_guard_and_gate(S_os, Xdref[0], Xdref[0], self.dp)
+        # Pass the velocity AND acceleration references (the guard's lam_os uses
+        # both); previously Xdref[0] was passed for the xdd slot too (audit MEDIUM).
+        _, lam_os, _, _, _, _, _ = op_space_guard_and_gate(S_os, Xdref[0], Xddref[0], self.dp)
 
         # singularity regularisation added here
         lam_eff = float(lam_os) + float(lam_extra)
@@ -326,7 +329,30 @@ class NonlinearMPCController:
         b = T.T @ Q @ (Yref - Sy0_stack - d_stack)
         ustack = np.linalg.solve(H, b)
 
-        # back to forces, clip first control
+        # --- Box-constrained refinement (clamp-in-loop, audit H4) ---------------
+        # The unconstrained solve ignores the task-force limit |F_k| <= Fmax over
+        # the whole horizon (previously only F0 was clipped post-hoc, so the
+        # predicted rollout the cost was computed against could be infeasible).
+        # F_k = u_k + Fff_k, so the box on u is [-Fmax - Fff, Fmax - Fff]. We
+        # project-gradient onto it (convex QP, dependency-free).
+        # TODO: for an exact/faster box-QP, swap this PGD for a dedicated solver
+        #       (e.g. qpsolvers/OSQP) behind an optional import.
+        u_lo = -self.p.Fmax - Fff_stack
+        u_hi =  self.p.Fmax - Fff_stack
+        u_proj = np.minimum(np.maximum(ustack, u_lo), u_hi)
+        if not np.allclose(u_proj, ustack):
+            # constraints are active -> refine with projected gradient descent on
+            # J(u) = 0.5 uᵀ H u - bᵀ u, step alpha <= 1/lambda_max(H) for stability.
+            Lmax = float(np.linalg.eigvalsh(0.5 * (H + H.T))[-1])
+            alpha = 1.0 / max(Lmax, 1e-12)
+            u = u_proj
+            for _ in range(int(self.p.proj_iters)):
+                u = np.minimum(np.maximum(u - alpha * (H @ u - b), u_lo), u_hi)
+            ustack = u
+        else:
+            ustack = u_proj
+
+        # back to forces (feasible by construction; the clip is now a safety no-op)
         Fstack = ustack + Fff_stack
         F0 = np.clip(Fstack[:2], -self.p.Fmax, self.p.Fmax)
         return F0, Lambda_reg, mu_task, lam_eff

@@ -44,7 +44,11 @@ def solve_muscle_forces(
     arg = P.k_mus * (sminGp - P.g_thresh)
     gate = stable_sigmoid(arg)
 
-    lam_mus = P.lam_mus_min + (P.lam_mus_max - P.lam_mus_min) / (1.0 + np.exp(gate))
+    # gate in [0,1]: 1 = well-conditioned, 0 = near-singular. Damping should span
+    # the FULL [lam_min, lam_max] range and reach lam_max at a singularity. The
+    # previous "1/(1+exp(gate))" form only spanned ~(0.27,0.5)*range, so it never
+    # damped strongly near singularities (audit MEDIUM). Use (1 - gate).
+    lam_mus = P.lam_mus_min + (P.lam_mus_max - P.lam_mus_min) * (1.0 - gate)
     lam_mus = lam_mus + (1.0 - eta) * 1e-3
 
     F_p = (

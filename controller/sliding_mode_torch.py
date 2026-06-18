@@ -108,8 +108,11 @@ class SlidingModeController:
         self._tau_filt  = torch.zeros(dof)
 
         # ----- blending / gates -----
-        self._eta_eq_floor = 0.50
-        self._eta_sw_floor = 0.35
+        # Floors at 0.0 so the gate can fully suppress ill-conditioned terms at
+        # singularities (matches numpy sliding_mode.py "FIX D"; audit H3).
+        self._eta_eq_floor = 0.0
+        self._eta_sw_floor = 0.0
+        self._eta_sw_pow   = 0.75  # softening power on eta for the switching term
         self._cond_low     =  400.0
         self._cond_high    = 2500.0
         self._lam_os_floor = 1e-3
@@ -584,29 +587,34 @@ class SlidingModeController:
         K_switch    = self._to_tensor_like(self.p.K_switch,    x[0])
         phi         = self._to_tensor_like(self.p.phi,         x[0])
 
-        F_eq = torch.einsum("bij,bj->bi", Lambda_reg, Kff_x * xdd_d) + mu
-
-        # Sliding surface errors (textbook tracking convention)
+        # Sliding surface errors (textbook tracking convention, e = desired - actual)
         e_x = x_d - x      # (B,2)
         e_v = xd_d - xd    # (B,2)
         s   = e_v + lambda_surf * e_x
 
-        # Saturation
+        # Saturation of the surface (boundary layer phi)
         sw = self._sat(s / (phi + 1e-12))
 
-        # Eta floors
-        eta_eq = torch.maximum(
-            eta_val,
-            torch.tensor(self._eta_eq_floor, device=eta_val.device, dtype=eta_val.dtype),
-        )
-        eta_sw = torch.maximum(
-            eta_val,
-            torch.tensor(self._eta_sw_floor, device=eta_val.device, dtype=eta_val.dtype),
-        )
+        # Singularity gates. Floors are 0.0 so both the equivalent and switching
+        # terms truly fade to zero at a singularity (audit H3 — the previous
+        # 0.50/0.35 floors kept the ill-conditioned terms alive and defeated the
+        # gate; numpy uses 0.0). eta_sw uses the same softening power as numpy.
+        zero = torch.zeros((), device=eta_val.device, dtype=eta_val.dtype)
+        eta_eq = torch.maximum(eta_val, zero)
+        eta_sw = torch.maximum(eta_val ** self._eta_sw_pow, zero)
 
-        F_sw   = (K_switch * sw) * eta_sw.unsqueeze(-1)
-        F_task = (eta_eq.unsqueeze(-1) * F_eq) + F_sw
-        tau_os = torch.einsum("bij,bj->bi", J_xy.transpose(-1, -2), F_task)
+        # Equivalent control in ACCELERATION space (matches numpy switch_in_accel=True):
+        #   xdd_cmd = eta_eq*(Kff*xdd_d + lambda*e_v) + eta_sw*(K*sat(s/phi))
+        # The lambda*e_v term is the velocity feedback that the previous torch
+        # force-only law omitted (audit H2), which is why it failed to track.
+        # The +K*sat(s) sign is correct: for e = x_d - x, s>0 means lagging the
+        # target, so the corrective acceleration must be positive (toward it).
+        eq_part = Kff_x * xdd_d + lambda_surf * e_v          # (B,2)
+        sw_part = K_switch * sw                              # (B,2)
+        xdd_cmd = eta_eq.unsqueeze(-1) * eq_part + eta_sw.unsqueeze(-1) * sw_part
+        # mu (the Coriolis/centrifugal task-space term) is added OUTSIDE the gate.
+        F_task  = torch.einsum("bij,bj->bi", Lambda_reg, xdd_cmd) + mu
+        tau_os  = torch.einsum("bij,bj->bi", J_xy.transpose(-1, -2), F_task)
 
         # ----- Joint-space fallback (when singular) -----
         # desired q* via DLS map of position error
