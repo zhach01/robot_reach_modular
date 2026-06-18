@@ -1,6 +1,6 @@
 # sim/simulator.py
 import numpy as np
-from logging_tools.log_buffer import LogBuffer
+from logging_tools.log_buffer_numpy import LogBuffer
 
 
 class TargetReachSimulator:

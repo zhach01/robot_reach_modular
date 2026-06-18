@@ -15,10 +15,10 @@ from config import (
     TrajectoryConfig,
 )
 
-from tasks.random_reach import Task as RandomReachTask
-from trajectory.minjerk import MinJerkLinearTrajectory, MinJerkParams
+from tasks.random_reach_numpy import Task as RandomReachTask
+from trajectory.minjerk_numpy import MinJerkLinearTrajectory, MinJerkParams
 from controller.anfis_controller import ANFISController, ANFISParams
-from sim.simulator import TargetReachSimulator
+from sim.simulator_numpy import TargetReachSimulator
 
 
 def build_env(pc: PlantConfig):

@@ -10,12 +10,12 @@ from model_lib.skeleton_numpy import (
     gravityCOM_cached,
 )
 
-from utils.kinematics_guard import KinGuardParams, adaptive_dls_pinv, scale_task_by_J
-from utils.dynamics_guard import DynGuardParams, op_space_guard_and_gate
+from utils.kinematics_guard_numpy import KinGuardParams, adaptive_dls_pinv, scale_task_by_J
+from utils.dynamics_guard_numpy import DynGuardParams, op_space_guard_and_gate
 
 # τ→activations shim to keep env API happy when muscles are off, and allocator
-from utils.muscle_guard import MuscleGuardParams, solve_muscle_forces
-from muscles.muscle_tools import (
+from utils.muscle_guard_numpy import MuscleGuardParams, solve_muscle_forces
+from muscles.muscle_tools_numpy import (
     get_Fmax_vec, force_to_activation_bisect, active_force_from_activation,
     saturation_repair_tau, apply_internal_force_regulation
 )

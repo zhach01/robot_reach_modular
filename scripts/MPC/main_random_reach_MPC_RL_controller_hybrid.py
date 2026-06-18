@@ -10,16 +10,16 @@ from config import PlantConfig, TrajectoryConfig, RunConfig
 
 # Prefer your existing task if present
 try:
-    from tasks.random_reach import Task as RandomReachTask
+    from tasks.random_reach_numpy import Task as RandomReachTask
     HAVE_TASK = True
 except Exception:
     HAVE_TASK = False
 
-from trajectory.minjerk import MinJerkLinearTrajectory, MinJerkParams
-from controller.hybrid_bc_a import RLPolicyParams, RLPolicy
-from controller.nmpc_task import NMPCParams
-from controller.mpc_rl_hybrid import MPC_RL_ControllerHybrid, HybridParams
-from sim.simulator import TargetReachSimulator
+from trajectory.minjerk_numpy import MinJerkLinearTrajectory, MinJerkParams
+from controller.hybrid_bc_a_numpy import RLPolicyParams, RLPolicy
+from controller.nmpc_task_numpy import NMPCParams
+from controller.mpc_rl_hybrid_numpy import MPC_RL_ControllerHybrid, HybridParams
+from sim.simulator_numpy import TargetReachSimulator
 from plotting.plots import plot_all, make_animations, hold_anims
 
 

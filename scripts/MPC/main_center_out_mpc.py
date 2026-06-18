@@ -4,10 +4,10 @@ from model_lib.environment_numpy import Environment
 from model_lib.muscles_numpy import RigidTendonHillMuscle
 from model_lib.effector_numpy import RigidTendonArm26
 from config import PlantConfig, ControlToggles, Numerics, TrajectoryConfig, RunConfig
-from tasks.center_out import Task as CenterOutTask
-from trajectory.minjerk import MinJerkLinearTrajectory, MinJerkParams
-from controller.nmpc_task import NonlinearMPCController, NMPCParams
-from sim.simulator import TargetReachSimulator
+from tasks.center_out_numpy import Task as CenterOutTask
+from trajectory.minjerk_numpy import MinJerkLinearTrajectory, MinJerkParams
+from controller.nmpc_task_numpy import NonlinearMPCController, NMPCParams
+from sim.simulator_numpy import TargetReachSimulator
 from plotting.plots import plot_all, make_animations, hold_anims
 
 def build_env(pc):

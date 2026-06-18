@@ -7,8 +7,8 @@ from typing import Tuple, Optional, Dict, List
 import torch
 import torch.nn as nn
 
-from utils.muscle_guard import MuscleGuardParams, solve_muscle_forces
-from muscles.muscle_tools import (
+from utils.muscle_guard_numpy import MuscleGuardParams, solve_muscle_forces
+from muscles.muscle_tools_numpy import (
     get_Fmax_vec, force_to_activation_bisect, active_force_from_activation,
     saturation_repair_tau
 )

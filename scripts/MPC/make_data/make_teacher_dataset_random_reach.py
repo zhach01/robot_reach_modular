@@ -9,11 +9,11 @@ from model_lib.environment_numpy import Environment
 from model_lib.muscles_numpy import RigidTendonHillMuscle
 from model_lib.effector_numpy import RigidTendonArm26
 from config import PlantConfig, TrajectoryConfig
-from tasks.random_reach import Task as RandomReachTask
-from trajectory.minjerk import MinJerkLinearTrajectory, MinJerkParams
-from controller.nmpc_task import NonlinearMPCController, NMPCParams
-from controller.hybrid_mpc_rl import HookedController   # <- will emit 14-D obs
-from sim.simulator import TargetReachSimulator
+from tasks.random_reach_numpy import Task as RandomReachTask
+from trajectory.minjerk_numpy import MinJerkLinearTrajectory, MinJerkParams
+from controller.nmpc_task_numpy import NonlinearMPCController, NMPCParams
+from controller.hybrid_mpc_rl_numpy import HookedController   # <- will emit 14-D obs
+from sim.simulator_numpy import TargetReachSimulator
 
 SAVE_PATH = "data/random_reach_mpc_ds.npz"
 

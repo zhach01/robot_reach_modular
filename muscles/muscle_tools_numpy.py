@@ -1,6 +1,6 @@
 import numpy as np
 from dataclasses import dataclass
-from utils.math_utils import right_pinv_rows_weighted
+from utils.math_utils_numpy import right_pinv_rows_weighted
 
 
 @dataclass

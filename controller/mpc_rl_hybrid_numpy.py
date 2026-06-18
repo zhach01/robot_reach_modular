@@ -4,11 +4,11 @@ from __future__ import annotations
 import os, numpy as np
 from dataclasses import dataclass
 
-from controller.nmpc_task import NonlinearMPCController, NMPCParams
-from controller.hybrid_bc_a import RLPolicy, _build_obs_a, _build_obs14
+from controller.nmpc_task_numpy import NonlinearMPCController, NMPCParams
+from controller.hybrid_bc_a_numpy import RLPolicy, _build_obs_a, _build_obs14
 
-from utils.muscle_guard import MuscleGuardParams, solve_muscle_forces
-from muscles.muscle_tools import (
+from utils.muscle_guard_numpy import MuscleGuardParams, solve_muscle_forces
+from muscles.muscle_tools_numpy import (
     get_Fmax_vec,
     active_force_from_activation,
     force_to_activation_bisect,

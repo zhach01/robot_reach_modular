@@ -132,7 +132,7 @@ def _get_gravity(skeleton_robot, gravity_vec) -> np.ndarray:
 def _get_Fmax_vec(env, n_muscles: int) -> np.ndarray:
     """Get maximum isometric force vector for muscles."""
     try:
-        from muscles.muscle_tools import get_Fmax_vec
+        from muscles.muscle_tools_numpy import get_Fmax_vec
         return get_Fmax_vec(env, n_muscles)
     except ImportError:
         pass
@@ -203,7 +203,7 @@ def _force_to_activation_simple(
     This is a simplified version that works for most cases.
     """
     try:
-        from muscles.muscle_tools import force_to_activation_bisect
+        from muscles.muscle_tools_numpy import force_to_activation_bisect
         return force_to_activation_bisect(F_des, lenvel, muscle, flpe, Fmax_vec, iters=12)
     except ImportError:
         pass

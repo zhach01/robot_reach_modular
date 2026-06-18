@@ -4,7 +4,7 @@
 Torch alias for the center-out task.
 
 NumPy version:
-    from tasks.base_task import CenterOutTask as Task
+    from tasks.base_task_numpy import CenterOutTask as Task
 
 Torch version:
     uses CenterOutTask from base_task_torch, which builds waypoints as a

@@ -12,10 +12,10 @@ from config import (
     TrajectoryConfig,
     RunConfig,
 )
-from tasks.center_out import Task as CenterOutTask
-from trajectory.minjerk import MinJerkLinearTrajectory, MinJerkParams
-from controller.sliding_mode import SlidingModeController, SlidingModeParams
-from sim.simulator import TargetReachSimulator
+from tasks.center_out_numpy import Task as CenterOutTask
+from trajectory.minjerk_numpy import MinJerkLinearTrajectory, MinJerkParams
+from controller.sliding_mode_numpy import SlidingModeController, SlidingModeParams
+from sim.simulator_numpy import TargetReachSimulator
 from plotting.plots import plot_all, make_animations, hold_anims
 import matplotlib.pyplot as plt
 

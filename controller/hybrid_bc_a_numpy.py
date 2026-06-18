@@ -30,7 +30,7 @@ import torch
 import torch.nn as nn
 
 # For τ reconstruction from activations
-from muscles.muscle_tools import (
+from muscles.muscle_tools_numpy import (
     get_Fmax_vec,
     active_force_from_activation,
 )

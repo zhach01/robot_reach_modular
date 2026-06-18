@@ -7,7 +7,7 @@ sys.path.append(sys.path[0].replace(r"/lib/kinematics", r""))
 
 # Libraries
 import numpy as np
-from lib.movements.HTM import *
+from lib.movements.HTM_numpy import *
 from lib.dynamics.Solver import *
 from sympy import *
 from lib.dynamics.fastsymp import tidy

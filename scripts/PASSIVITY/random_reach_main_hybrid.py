@@ -20,9 +20,9 @@ from config import (
     InternalForceConfig, TrajectoryConfig, RunConfig,
 )
 
-from tasks.random_reach import Task as RandomReachTask
-from trajectory.minjerk import MinJerkLinearTrajectory, MinJerkParams
-from sim.simulator import TargetReachSimulator
+from tasks.random_reach_numpy import Task as RandomReachTask
+from trajectory.minjerk_numpy import MinJerkLinearTrajectory, MinJerkParams
+from sim.simulator_numpy import TargetReachSimulator
 from plotting.plots import plot_all, make_animations, hold_anims
 
 from controller.energy_tank_hybrid import HybridEnergyTankController, HybridEnergyTankParams

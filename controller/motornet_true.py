@@ -571,7 +571,7 @@ class MotorNetTrue:
     ) -> Tuple[np.ndarray, np.ndarray]:
         """Collect expert demonstrations using OSC controller."""
         from controller.osc_controller import OSCController, OSCParams
-        from trajectory.minjerk import MinJerkLinearTrajectory, MinJerkParams
+        from trajectory.minjerk_numpy import MinJerkLinearTrajectory, MinJerkParams
         from config import TrajectoryConfig
         
         if verbose:

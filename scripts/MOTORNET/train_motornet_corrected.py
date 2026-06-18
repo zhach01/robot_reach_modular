@@ -22,9 +22,9 @@ Usage (from repo root):
 Notes:
 - This script assumes your repo provides:
     - config.PlantConfig, TrajectoryConfig, ...
-    - tasks.random_reach.Task
-    - trajectory.minjerk.MinJerkLinearTrajectory
-    - controller.pd_if_optimized (recommended expert) OR controller.pd_if_controller
+    - tasks.random_reach_numpy.Task
+    - trajectory.minjerk_numpy.MinJerkLinearTrajectory
+    - controller.pd_if_optimized (recommended expert) OR controller.pd_if_controller_numpy
     - model_lib Environment + Arm26
 
 If any import fails, run from your project root (so python can find the package).
@@ -40,8 +40,8 @@ from model_lib.muscles_numpy import RigidTendonHillMuscle
 from model_lib.effector_numpy import RigidTendonArm26
 
 from config import PlantConfig, ControlToggles, ControlGains, Numerics, InternalForceConfig, TrajectoryConfig
-from tasks.random_reach import Task as RandomReachTask
-from trajectory.minjerk import MinJerkLinearTrajectory, MinJerkParams
+from tasks.random_reach_numpy import Task as RandomReachTask
+from trajectory.minjerk_numpy import MinJerkLinearTrajectory, MinJerkParams
 
 # Expert controller: prefer optimized PDIF if present
 try:
@@ -49,7 +49,7 @@ try:
     HAS_OPT_PDIF = True
 except Exception:
     HAS_OPT_PDIF = False
-    from controller.pd_if_controller import PDIFController, PDIFParams
+    from controller.pd_if_controller_numpy import PDIFController, PDIFParams
 
 # MotorNet controller + helper
 from controller.motornet_fixed import MotorNetFixed, MotorNetFixedParams, activation_target_to_excitation

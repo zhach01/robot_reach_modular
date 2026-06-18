@@ -17,12 +17,12 @@ from config import (
     RunConfig,
 )
 
-from tasks.random_reach import Task as RandomReachTask
-from trajectory.minjerk import MinJerkLinearTrajectory, MinJerkParams
+from tasks.random_reach_numpy import Task as RandomReachTask
+from trajectory.minjerk_numpy import MinJerkLinearTrajectory, MinJerkParams
 
 from controller.synergy_controller_pure import SynergyPureController, SynergyPureParams
 
-from sim.simulator import TargetReachSimulator
+from sim.simulator_numpy import TargetReachSimulator
 from plotting.plots import plot_all, make_animations, hold_anims
 
 

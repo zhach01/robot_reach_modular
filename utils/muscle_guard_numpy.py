@@ -1,6 +1,6 @@
 import numpy as np
 from dataclasses import dataclass
-from utils.linear_utils import nnls_small_active_set
+from utils.linear_utils_numpy import nnls_small_active_set
 
 
 # implements [3a],[3b],[3c]

@@ -3,9 +3,9 @@
 Two-DOF planar arm built purely on your robotics library (HTM formulation).
 
 Uses:
-- lib.Robot.Serial for the model container
-- lib.kinematics.HTM.{forwardHTM, geometricJacobian}
-- lib.dynamics.DynamicsHTM.{inertiaMatrixCOM, centrifugalCoriolisCOM, gravitationalCOM}
+- lib.Robot_numpy.Serial for the model container
+- lib.kinematics.HTM_kinematics_numpy.{forwardHTM, geometricJacobian}
+- lib.dynamics.DynamicsHTM_numpy.{inertiaMatrixCOM, centrifugalCoriolisCOM, gravitationalCOM}
 
 No torch. Batching supported on inputs to ode/integrate/joint2cartesian/path2cartesian.
 
@@ -19,9 +19,9 @@ from typing import Tuple, Union
 import os, atexit, pickle
 import numpy as np
 
-from lib.Robot import Serial
-import lib.kinematics.HTM as _htm
-import lib.dynamics.DynamicsHTM as _dyn
+from lib.Robot_numpy import Serial
+import lib.kinematics.HTM_kinematics_numpy as _htm
+import lib.dynamics.DynamicsHTM_numpy as _dyn
 
 # Try to locate the correct gravity function name once
 _HAS_GRAVITATIONAL = hasattr(_dyn, "gravitationalCOM")
@@ -171,7 +171,7 @@ def forwardHTM_cached(robot, symbolic=False):
 # --- CHANGE: robust, tolerant Jdot cache wrapper (handles old pickles too) ---
 def geometricJacobianDot_cached(robot, symbolic=False):
     """
-    Cached wrapper around lib.kinematics.HTM.geometricJacobianDerivative(robot).
+    Cached wrapper around lib.kinematics.HTM_kinematics_numpy.geometricJacobianDerivative(robot).
 
     Notes
     -----
@@ -183,7 +183,7 @@ def geometricJacobianDot_cached(robot, symbolic=False):
     # Ensure the function exists in the library
     if not hasattr(_htm, "geometricJacobianDerivative"):
         raise AttributeError(
-            "lib.kinematics.HTM.geometricJacobianDerivative(...) not found. "
+            "lib.kinematics.HTM_kinematics_numpy.geometricJacobianDerivative(...) not found. "
             "Update lib.zip or add a finite-difference fallback."
         )
 
@@ -352,8 +352,8 @@ class TwoDofArm(Skeleton):
     Dynamics:
         qdd = D(q)^{-1} [ τ + J(q)^T f - C(q,qd) qd - g(q) ]
     where:
-        - D, C, g come from lib.dynamics.DynamicsHTM
-        - J is lib.kinematics.HTM.geometricJacobian (linear x-y rows)
+        - D, C, g come from lib.dynamics.DynamicsHTM_numpy
+        - J is lib.kinematics.HTM_kinematics_numpy.geometricJacobian (linear x-y rows)
     """
 
     def __init__(

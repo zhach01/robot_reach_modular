@@ -50,13 +50,13 @@ from config import PlantConfig, TrajectoryConfig
 
 # Try to import tasks (optional)
 try:
-    from tasks.center_out import Task as CenterOutTask
+    from tasks.center_out_numpy import Task as CenterOutTask
 except ImportError:
     CenterOutTask = None
 
 # Trajectory imports are optional - we have a fallback
 try:
-    from trajectory.minjerk import MinJerkLinearTrajectory, MinJerkParams
+    from trajectory.minjerk_numpy import MinJerkLinearTrajectory, MinJerkParams
 except ImportError:
     MinJerkLinearTrajectory = None
     MinJerkParams = None

@@ -1,6 +1,6 @@
 # tasks/random_reach.py
 import numpy as np
-from tasks.base_task import ReachTask
+from tasks.base_task_numpy import ReachTask
 
 
 class Task(ReachTask):

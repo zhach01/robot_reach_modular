@@ -8,9 +8,9 @@ from model_lib.environment_numpy import Environment
 from model_lib.muscles_numpy import RigidTendonHillMuscle
 from model_lib.effector_numpy import RigidTendonArm26
 from config import PlantConfig, TrajectoryConfig, RunConfig
-from trajectory.minjerk import MinJerkLinearTrajectory, MinJerkParams
-from controller.hybrid_bc_a import RLPolicyParams, RLPolicy, RLControllerA, RLControllerAParams
-from sim.simulator import TargetReachSimulator
+from trajectory.minjerk_numpy import MinJerkLinearTrajectory, MinJerkParams
+from controller.hybrid_bc_a_numpy import RLPolicyParams, RLPolicy, RLControllerA, RLControllerAParams
+from sim.simulator_numpy import TargetReachSimulator
 from plotting.plots import plot_all, make_animations, hold_anims
 
 # -------------------- helpers --------------------

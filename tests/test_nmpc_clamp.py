@@ -24,8 +24,8 @@ def _build(Fmax, ep=1.5):
     from model_lib.environment_numpy import Environment
     from model_lib.muscles_numpy import RigidTendonHillMuscle
     from model_lib.effector_numpy import RigidTendonArm26
-    from trajectory.minjerk import MinJerkLinearTrajectory, MinJerkParams
-    from controller.nmpc_task import NonlinearMPCController, NMPCParams
+    from trajectory.minjerk_numpy import MinJerkLinearTrajectory, MinJerkParams
+    from controller.nmpc_task_numpy import NonlinearMPCController, NMPCParams
     pc, tc = PlantConfig(), TrajectoryConfig()
     mus = RigidTendonHillMuscle(min_activation=0.02)
     arm = RigidTendonArm26(muscle=mus, timestep=pc.timestep, damping=pc.damping,
@@ -45,7 +45,7 @@ def _build(Fmax, ep=1.5):
 
 
 def test_nmpc_tracks_with_adequate_force():
-    from sim.simulator import TargetReachSimulator
+    from sim.simulator_numpy import TargetReachSimulator
     env, arm, ctrl, traj, target = _build(Fmax=600.0, ep=1.5)
     steps = int(1.5 / arm.dt)
     logs = TargetReachSimulator(env, arm, ctrl, traj, steps).run()

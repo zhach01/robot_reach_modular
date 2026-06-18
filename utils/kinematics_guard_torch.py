@@ -69,7 +69,7 @@ from torch import Tensor
 try:
     from lib.kinematics.HTM_kinematics_torch import geometricJacobian as _geomJ_HTM
 except ImportError:
-    from lib.kinematics.HTM import geometricJacobian as _geomJ_HTM  # noqa: F401
+    from lib.kinematics.HTM_kinematics_numpy import geometricJacobian as _geomJ_HTM  # noqa: F401
 
 _DEBUG_MANIP = False
 

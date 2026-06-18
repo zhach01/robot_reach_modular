@@ -74,7 +74,7 @@ try:
     from utils.linear_utils_torch import nnls_small_active_set as _nnls_fn
     _NNLS_IS_TORCH = True
 except Exception:  # pragma: no cover
-    from utils.linear_utils import nnls_small_active_set as _nnls_fn  # type: ignore
+    from utils.linear_utils_numpy import nnls_small_active_set as _nnls_fn  # type: ignore
     _NNLS_IS_TORCH = False
 
 

@@ -46,10 +46,10 @@ from model_lib.skeleton_numpy import (
     centrifugalCoriolisCOM_cached,
     gravityCOM_cached,
 )
-from utils.kinematics_guard import KinGuardParams, adaptive_dls_pinv
-from utils.dynamics_guard import DynGuardParams, op_space_guard_and_gate
-from utils.muscle_guard import MuscleGuardParams, solve_muscle_forces
-from muscles.muscle_tools import (
+from utils.kinematics_guard_numpy import KinGuardParams, adaptive_dls_pinv
+from utils.dynamics_guard_numpy import DynGuardParams, op_space_guard_and_gate
+from utils.muscle_guard_numpy import MuscleGuardParams, solve_muscle_forces
+from muscles.muscle_tools_numpy import (
     get_Fmax_vec,
     force_to_activation_bisect,
     active_force_from_activation,

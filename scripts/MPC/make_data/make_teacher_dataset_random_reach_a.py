@@ -9,10 +9,10 @@ from model_lib.environment_numpy import Environment
 from model_lib.muscles_numpy import RigidTendonHillMuscle
 from model_lib.effector_numpy import RigidTendonArm26
 from config import PlantConfig, TrajectoryConfig
-from trajectory.minjerk import MinJerkLinearTrajectory, MinJerkParams
-from controller.nmpc_task import NonlinearMPCController, NMPCParams
-from controller.hybrid_bc_a import HookedControllerA
-from sim.simulator import TargetReachSimulator
+from trajectory.minjerk_numpy import MinJerkLinearTrajectory, MinJerkParams
+from controller.nmpc_task_numpy import NonlinearMPCController, NMPCParams
+from controller.hybrid_bc_a_numpy import HookedControllerA
+from sim.simulator_numpy import TargetReachSimulator
 
 SAVE_PATH_DEFAULT = "data/random_reach_a_ds.npz"
 

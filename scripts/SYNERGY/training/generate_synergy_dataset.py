@@ -16,13 +16,13 @@ from config import (
     TrajectoryConfig,
 )
 
-from tasks.random_reach import Task as RandomReachTask
-from trajectory.minjerk import MinJerkLinearTrajectory, MinJerkParams
+from tasks.random_reach_numpy import Task as RandomReachTask
+from trajectory.minjerk_numpy import MinJerkLinearTrajectory, MinJerkParams
 
-from sim.simulator import TargetReachSimulator
+from sim.simulator_numpy import TargetReachSimulator
 
 # pick a “teacher” controller that TRACKS well (recommended: PD/IF)
-from controller.pd_if_controller import PDIFController, PDIFParams
+from controller.pd_if_controller_numpy import PDIFController, PDIFParams
 # or you can swap to your working synergy-hybrid controller if you prefer:
 # from controller.synergy_controller import SynergyController, SynergyParams
 
