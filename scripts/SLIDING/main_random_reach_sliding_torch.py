@@ -50,27 +50,20 @@ def build_env_torch(pc: PlantConfig):
 
 
 def _sliding_params(num, toggles, ifc):
-    dt = torch.get_default_dtype()
+    # mirrors the numpy random-reach sliding gains
     return SlidingModeParams(
-        lambda_surf=torch.tensor([26.0, 26.0], dtype=dt),
-        K_switch=torch.tensor([4.0, 4.0], dtype=dt),
-        phi=torch.tensor([0.004, 0.004], dtype=dt),
-        Kff_x=torch.tensor([1.0, 1.0], dtype=dt),
-        Kp_q=torch.tensor([10.0, 10.0], dtype=dt),
-        Kd_q=torch.tensor([2.0, 2.0], dtype=dt),
-        eps=float(getattr(num, "eps", 1e-6)),
-        lam_os_max=float(getattr(num, "lam_os_max", 200.0)),
-        sigma_thresh=float(getattr(num, "sigma_thresh", 1e-4)),
-        gate_pow=float(getattr(num, "gate_pow", 2.0)),
+        lambda_surf=[26.0, 26.0],
+        K_switch=[4.0, 4.0],
+        phi=[0.004, 0.004],
+        Kff_x=[1.0, 1.0],
         enable_inertia_comp=bool(getattr(toggles, "enable_inertia_comp", True)),
         enable_gravity_comp=bool(getattr(toggles, "enable_gravity_comp", True)),
         enable_velocity_comp=bool(getattr(toggles, "enable_velocity_comp", True)),
-        enable_joint_damping=bool(getattr(toggles, "enable_joint_damping", False)),
-        enable_internal_force=False,
-        cocon_a0=0.0,
-        bisect_iters=int(getattr(ifc, "bisect_iters", 12)),
-        linesearch_eps=float(getattr(num, "linesearch_eps", 1e-5)),
-        linesearch_safety=float(getattr(num, "linesearch_safety", 0.5)),
+        eps=float(getattr(num, "eps", 1e-6)),
+        lam_os_max=float(getattr(num, "lam_os_max", 1e6)),
+        sigma_thresh=float(getattr(num, "sigma_thresh", 1e-4)),
+        gate_pow=float(getattr(num, "gate_pow", 2.0)),
+        bisect_iters=int(getattr(ifc, "bisect_iters", 16)),
     )
 
 

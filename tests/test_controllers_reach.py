@@ -92,23 +92,16 @@ def test_sliding_mode_torch_tracks():
     from controller.torch.sliding_mode import SlidingModeController, SlidingModeParams
     env, arm, pc = _build_env()
     traj, target = _make_traj(env)
-    gn, num, tog, ifc = ControlGains(), Numerics(), ControlToggles(), InternalForceConfig()
+    num, tog, ifc = Numerics(), ControlToggles(), InternalForceConfig()
     p = SlidingModeParams(
-        lambda_surf=torch.tensor([10., 10.], dtype=torch.float64),
-        K_switch=torch.tensor([2., 2.], dtype=torch.float64),
-        phi=torch.tensor([0.02, 0.02], dtype=torch.float64),
-        Kff_x=torch.tensor(gn.Kff_x, dtype=torch.float64),
-        Kp_q=torch.tensor(gn.Kp_q, dtype=torch.float64),
-        Kd_q=torch.tensor(gn.Kd_q, dtype=torch.float64),
+        lambda_surf=[26.0, 26.0], K_switch=[4.0, 4.0], phi=[0.004, 0.004],
+        Kff_x=[1.0, 1.0],
         eps=float(num.eps), lam_os_max=float(num.lam_os_max),
         sigma_thresh=float(num.sigma_thresh), gate_pow=float(num.gate_pow),
         enable_inertia_comp=tog.enable_inertia_comp,
         enable_gravity_comp=tog.enable_gravity_comp,
         enable_velocity_comp=tog.enable_velocity_comp,
-        enable_joint_damping=tog.enable_joint_damping,
-        enable_internal_force=tog.enable_internal_force,
-        cocon_a0=float(ifc.cocon_a0), bisect_iters=int(ifc.bisect_iters),
-        linesearch_eps=float(num.linesearch_eps), linesearch_safety=float(num.linesearch_safety))
+        bisect_iters=int(ifc.bisect_iters))
     ctrl = SlidingModeController(env, arm, p)
     err = _final_error(env, arm, ctrl, traj, target)
     assert err < 0.01, f"sliding-mode failed to track: {err*1000:.1f} mm"

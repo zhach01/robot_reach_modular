@@ -1,10 +1,6 @@
 #!/usr/bin/env python3
 # main_center_out_sliding_torch.py
 # Torch center-out sliding-mode demo (torch counterpart of main_center_out_sliding.py).
-# NOTE: radius=0.06 (kept inside the workspace). The torch sliding controller blends
-# its safe joint-space fallback on cond(R), which (unlike numpy's cond(J)) does not
-# detect the full-extension Jacobian singularity, so radius=0.10 (numpy parity) diverges.
-# Pending fix: add sminJ/cond(J)-based gating to controller/torch/sliding_mode.py.
 
 from __future__ import annotations
 
@@ -63,7 +59,7 @@ def main():
     env, arm, q0 = build_env_torch(pc)
     device = q0.device
 
-    n_targets, radius = 4, 0.06
+    n_targets, radius = 4, 0.10
     center = env.states["fingertip"][0, :2].clone()
     angles = [2.0 * math.pi * i / n_targets for i in range(n_targets)]
     targets = torch.stack(
@@ -78,27 +74,22 @@ def main():
         waypoints, MinJerkParams(Vmax=tc.Vmax, Amax=tc.Amax, Jmax=tc.Jmax, gamma=tc.gamma_time_scale)
     )
 
-    dt = torch.get_default_dtype()
+    # mirrors the numpy center-out sliding gains (gentler surface, thick boundary
+    # layer, higher robustness). The mirrored controller's cond(J) blend + elbow
+    # floor keep the far reaches stable at the full radius.
     p = SlidingModeParams(
-        lambda_surf=torch.tensor([18.0, 18.0], dtype=dt),
-        K_switch=torch.tensor([18.0, 18.0], dtype=dt),
-        phi=torch.tensor([0.075, 0.075], dtype=dt),
-        Kff_x=torch.tensor([1.0, 1.0], dtype=dt),
-        Kp_q=torch.tensor([10.0, 10.0], dtype=dt),
-        Kd_q=torch.tensor([2.0, 2.0], dtype=dt),
-        eps=float(getattr(num, "eps", 1e-6)),
-        lam_os_max=float(getattr(num, "lam_os_max", 200.0)),
-        sigma_thresh=float(getattr(num, "sigma_thresh", 1e-4)),
-        gate_pow=float(getattr(num, "gate_pow", 2.0)),
+        lambda_surf=[18.0, 18.0],
+        K_switch=[18.0, 18.0],
+        phi=[0.075, 0.075],
+        Kff_x=[1.0, 1.0],
         enable_inertia_comp=bool(getattr(toggles, "enable_inertia_comp", True)),
         enable_gravity_comp=bool(getattr(toggles, "enable_gravity_comp", True)),
         enable_velocity_comp=bool(getattr(toggles, "enable_velocity_comp", True)),
-        enable_joint_damping=bool(getattr(toggles, "enable_joint_damping", False)),
-        enable_internal_force=False,
-        cocon_a0=0.0,
-        bisect_iters=int(getattr(ifc, "bisect_iters", 12)),
-        linesearch_eps=float(getattr(num, "linesearch_eps", 1e-5)),
-        linesearch_safety=float(getattr(num, "linesearch_safety", 0.5)),
+        eps=float(getattr(num, "eps", 1e-6)),
+        lam_os_max=float(getattr(num, "lam_os_max", 1e6)),
+        sigma_thresh=float(getattr(num, "sigma_thresh", 1e-4)),
+        gate_pow=float(getattr(num, "gate_pow", 2.0)),
+        bisect_iters=int(getattr(ifc, "bisect_iters", 16)),
     )
 
     ctrl = SlidingModeController(env, arm, p)
