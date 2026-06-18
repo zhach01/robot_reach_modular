@@ -1,5 +1,15 @@
 """
-Pure Muscle Synergy Controller (STRICT)
+Pure Muscle Synergy Controller (STRICT) -- RESEARCH BASELINE, NOT the canonical tracker.
+
+Canonical synergy controller = controller/numpy/synergy_controller.py (full:
+modules + modulation + residual correction). This *pure* variant is kept as a
+deliberate low-dimensional baseline: it shows the limit of controlling with K
+non-negative synergies and NO residual correction. It tracks well on most reaches
+(~0.6mm final) but can transiently STALL on reach directions whose required muscle
+activation lies largely outside the non-negative synergy cone (measured: ~77% of
+the needed activation outside span(W) on one seed -> ~70mm transient, recovers).
+That stall is inherent to pure synergy control (not a bug); the full controller's
+residual term is exactly what removes it.
 
 Commanded activations are constrained to the synergy subspace:
     a(t) = clip(W c(t)),  c(t) >= 0

@@ -108,6 +108,19 @@ def test_anfis_torch_tracks():
     assert err < 0.01, f"ANFIS failed to track: {err*1000:.1f} mm"
 
 
+def test_synergy_torch_tracks():
+    # canonical (full) SynergyController, torch port: modules + modulation +
+    # residual correction must drive the fingertip to the target with the
+    # default heuristic W (no trained synergy model needed).
+    from controller.torch.synergy_controller import SynergyController, SynergyParams
+    env, arm, pc = _build_env()
+    traj, target = _make_traj(env)
+    ctrl = SynergyController(env, arm, SynergyParams(
+        Kp_task=800.0, Kv_task=60.0, c_max=5.0, synergy_strength=0.8))
+    err = _final_error(env, arm, ctrl, traj, target)
+    assert err < 0.01, f"synergy failed to track: {err*1000:.1f} mm"
+
+
 def test_sliding_mode_torch_tracks():
     from controller.torch.sliding_mode import SlidingModeController, SlidingModeParams
     env, arm, pc = _build_env()
