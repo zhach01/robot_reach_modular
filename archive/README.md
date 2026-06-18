@@ -29,3 +29,13 @@ Comparison on a reach (lower RMSE = better tracking):
   against the much-better EnergyTankController). Archived.
 - `tests/test_cbf_qp_fallback.py` — tested the QP fallback inside the archived
   CBF-QP. Removed.
+
+## Passivity: energy_tank_v3_complete (strict-passivity variant, archived)
+A "comprehensive" energy tank (task-energy preview, gain scheduling, variable
+damping) that keeps STRICT passivity. Benchmarked vs the canonical
+EnergyTankController (relaxed) on the same reaches:
+  random-reach: current 1.05mm vs v3 1.99mm RMSE
+  center-out:   current 3.89mm vs v3 24mm RMSE
+v3 is worse for free-motion reaching (strict passivity costs tracking, as the
+literature predicts). Archived; retrieve it if a CONTACT/interaction task needs
+the strict-passivity guarantee.
