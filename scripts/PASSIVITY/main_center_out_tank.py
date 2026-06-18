@@ -69,7 +69,7 @@ def main():
 
     # Center-out tracking tuned to PD-IF/sliding level (~3-4 mm vs the previous
     # ~21 mm). Two changes mattered:
-    #   1) match_torch=False: applies the inverse-dynamics feedforward (mu)
+    #   1) strict_passivity=False: applies the inverse-dynamics feedforward (mu)
     #      UNGATED. With the default (True) mu is passivity-gated, which is
     #      conservative and caused the steady-state lag/drift on the far reaches
     #      (steady-state 18.7 -> 1.6 mm just from this).
@@ -82,7 +82,7 @@ def main():
         K0=np.diag([4000.0, 4000.0]),
         Kff=2.0,
         zeta=1.0,
-        match_torch=False,
+        strict_passivity=False,
         KI=np.array([0.0, 0.0]),
         Imax=np.array([0.0, 0.0]),
         eps=num.eps,

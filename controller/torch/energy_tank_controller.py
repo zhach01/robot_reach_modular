@@ -162,6 +162,16 @@ class EnergyTankParams:
     Emin: float = 1e-4
     Emax: float = 0.5
 
+    # Tracking knobs (parity with the numpy controller).
+    # Kff: feedforward scale on desired acceleration. zeta: inertia-shaped damping
+    # ratio (1.0 = critical). strict_passivity: if True, fold mu into the
+    # passivity-gated force (conservative); if False (default), apply mu ungated
+    # for better tracking -- strict passivity is only needed for contact/interaction,
+    # not free-motion reaching.
+    Kff: float = 1.0
+    zeta: float = 0.85
+    strict_passivity: bool = False
+
     # Singularity safety: cond(J) blend to a joint-space fallback (same mechanism
     # as the sliding-mode / PD-IF controllers), active only near the full-extension
     # Jacobian singularity. Defense-in-depth alongside the tank's eta-gating.
@@ -586,7 +596,7 @@ class EnergyTankController:
         tmpK = torch.einsum("bij,bjk->bik", tmpK, Lam_is)     # (B,2,2)
         sqrt_tmpK = matrix_sqrt_spd(tmpK)                     # (B,2,2)
 
-        Kv = 2.0 * torch.einsum("bij,bjk->bik", Lam_s, sqrt_tmpK)
+        Kv = (2.0 * float(self.p.zeta)) * torch.einsum("bij,bjk->bik", Lam_s, sqrt_tmpK)
         Kv = torch.einsum("bij,bjk->bik", Kv, Lam_s)          # (B,2,2)
 
         # ------------------------------------------------------------------
@@ -638,11 +648,16 @@ class EnergyTankController:
         # Active raw force (may inject energy)
         # F_act_raw = Lambda xdd_d + mu + K0 e_x + Kv e_v + F_I
         # ------------------------------------------------------------------
-        Lam_xdd = torch.einsum("bij,bj->bi", Lambda, xdd_d)       # (B,2)
+        Lam_xdd = torch.einsum("bij,bj->bi", Lambda, float(self.p.Kff) * xdd_d)  # (B,2)
         K0_ex = torch.einsum("ij,bj->bi", K0_mat, e_x)            # (B,2)
         Kv_ev = torch.einsum("bij,bj->bi", Kv, e_v)               # (B,2)
 
-        F_act_raw = Lam_xdd + mu + K0_ex + Kv_ev + F_I           # (B,2)
+        # strict_passivity=True folds mu into the gated force (conservative);
+        # False (default) keeps mu OUT here and applies it ungated below (better
+        # tracking). Parity with the numpy controller.
+        F_act_raw = Lam_xdd + K0_ex + Kv_ev + F_I                 # (B,2)
+        if self.p.strict_passivity:
+            F_act_raw = F_act_raw + mu
 
         # Only the component parallel to true velocity xd can inject/extract energy
         F_par, F_perp = _decompose_parallel_perp(F_act_raw, xd)  # (B,2),(B,2)
@@ -667,8 +682,12 @@ class EnergyTankController:
         s[mask] = torch.clamp(ratio[mask], min=0.0, max=1.0)
         s[~mask] = 1.0
 
-        # Final command force
+        # Final command force. When not strictly passive, mu is added here UNGATED
+        # (it was kept out of F_act_raw above) -> the feedforward is not gated by
+        # the tank, which removes the steady-state lag/drift.
         F_cmd = F_pas + F_perp + s.unsqueeze(-1) * F_par         # (B,2)
+        if not self.p.strict_passivity:
+            F_cmd = F_cmd + mu
 
         # ------------------------------------------------------------------
         # Joint torques from tank force

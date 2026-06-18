@@ -2,11 +2,9 @@
 # main_center_out_tank_torch.py
 # Torch center-out energy-tank demo (torch counterpart of main_center_out_tank.py).
 #
-# The torch EnergyTankController has no `match_torch`/`Kff`/`zeta` knobs -- it
-# always applies the inverse-dynamics feedforward (mu) INSIDE the passivity-gated
-# force (equivalent to numpy match_torch=True). So even with the same stiff K0 as
-# the tuned numpy demo, the far-reach center-out tracks looser than numpy
-# (match_torch=False). This is the concrete reason match_torch exists in numpy.
+# Uses the same tuning as the numpy tank demo (K0=4000, Kff=2.0, critical zeta,
+# strict_passivity=False default). The torch controller now has the same
+# Kff/zeta/strict_passivity knobs as numpy, so it tracks at the same ~3-4 mm.
 
 from __future__ import annotations
 
@@ -84,6 +82,8 @@ def main():
     p = EnergyTankParams(
         D0=torch.diag(torch.tensor([25.0, 25.0], dtype=dt)),
         K0=torch.diag(torch.tensor([4000.0, 4000.0], dtype=dt)),
+        Kff=2.0,
+        zeta=1.0,
         KI=torch.tensor([0.0, 0.0], dtype=dt),
         Imax=torch.tensor([0.0, 0.0], dtype=dt),
         eps=float(getattr(num, "eps", 1e-6)),

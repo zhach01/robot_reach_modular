@@ -23,9 +23,10 @@ Progressive singularity margin:
 - Use p.q2_margin_max_deg to cap the margin automatically.
 
 Notes:
-- "match_torch" controls whether mu is included inside the passivity-gated term.
-  * match_torch=True  -> stricter passivity at the port but can be conservative
-  * match_torch=False -> better tracking; passivity is weaker (mu is ungated)
+- "strict_passivity" controls whether mu is included inside the passivity-gated term.
+  * strict_passivity=True  -> stricter passivity at the port but can be conservative
+  * strict_passivity=False -> better tracking; passivity is weaker (mu is ungated)
+    (default; strict passivity is only needed for contact/interaction, not free motion)
 """
 
 from __future__ import annotations
@@ -281,9 +282,13 @@ class EnergyTankParams:
     #  - 'damping' : PO/PC-style minimal correction by extra damping along velocity
     passivity_method: str = "scaling"
 
-    # If True: match Torch behavior more closely by INCLUDING mu inside the gated force.
-    # If False: mu is always applied ungated (better tracking; weaker "strict" passivity).
-    match_torch: bool = True
+    # Strict passivity at the port. If True, the inverse-dynamics feedforward (mu)
+    # is INCLUDED inside the passivity-gated force -> stricter passivity but
+    # conservative tracking. If False, mu is applied ungated -> better tracking
+    # (weaker "strict" passivity). Default False: for free-motion reaching strict
+    # passivity is not required (it matters for contact / human interaction); see
+    # Califano et al. 2022 (arXiv:2211.17033), Zanella et al. 2024 (IET CTA).
+    strict_passivity: bool = False
 
     # Muscle / internal-force options
     bisect_iters: int = 12
@@ -494,7 +499,7 @@ class EnergyTankController:
             + (Kv @ e_v)
             + F_I
         )
-        if self.p.match_torch:
+        if self.p.strict_passivity:
             F_act_raw = F_act_raw + mu
 
         # Robust direction for decomposition (avoid |xd| ~ 0 issues)
@@ -523,7 +528,7 @@ class EnergyTankController:
         if str(self.p.passivity_method).lower() == "damping":
             # PO/PC-style: minimally modify force by adding extra damping along velocity
             # Build an ungated nominal force first.
-            if self.p.match_torch:
+            if self.p.strict_passivity:
                 # mu is inside F_act_raw already (in F_par/F_perp)
                 F_nom = F_pas + F_perp + F_par
             else:
@@ -560,7 +565,7 @@ class EnergyTankController:
                     P_inj_eff = 0.0
         else:
             # Classic scaling of the power-injecting component (parallel part)
-            if self.p.match_torch:
+            if self.p.strict_passivity:
                 # mu already included; do NOT add it again.
                 F_cmd = F_pas + F_perp + s * F_par
             else:
@@ -713,7 +718,7 @@ class EnergyTankController:
             P_refund=P_refund,
             P_spend=P_spend,
             eta_clip=eta_clip,
-            match_torch=float(self.p.match_torch),
+            strict_passivity=float(self.p.strict_passivity),
             mu_norm_raw=float(mu_norm_raw),
             mu_norm=float(mu_norm),
             tau_barrier_2=float(tau_barrier[1]) if tau_barrier.size >= 2 else 0.0,

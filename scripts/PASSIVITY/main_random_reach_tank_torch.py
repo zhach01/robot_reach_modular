@@ -2,12 +2,9 @@
 # main_random_reach_tank_torch.py
 # Torch counterpart of main_random_reach_tank.py (energy-tank passivity).
 #
-# NOTE: the torch EnergyTankController has no `match_torch` flag -- it ALWAYS
-# applies the inverse-dynamics feedforward (mu) inside the passivity-gated force
-# (equivalent to numpy match_torch=True). It also has no Kff/zeta knobs. So this
-# demo uses the same stiffness as the numpy demo but cannot apply the
-# tracking-improving ungated-mu path; expect looser path-following than the tuned
-# numpy tank (this is exactly why match_torch was added to the numpy controller).
+# Uses the same tuning as the numpy tank demo (K0=4000, Kff=2.0, critical zeta,
+# strict_passivity=False default) -> matches numpy tracking (~1 mm). The torch
+# controller now has the same Kff/zeta/strict_passivity knobs as numpy.
 
 from __future__ import annotations
 
@@ -61,6 +58,8 @@ def _tank_params(num, toggles, ifc):
     return EnergyTankParams(
         D0=torch.diag(torch.tensor([25.0, 25.0], dtype=dt)),
         K0=torch.diag(torch.tensor([4000.0, 4000.0], dtype=dt)),
+        Kff=2.0,
+        zeta=1.0,
         KI=torch.tensor([0.0, 0.0], dtype=dt),
         Imax=torch.tensor([0.0, 0.0], dtype=dt),
         eps=float(getattr(num, "eps", 1e-6)),

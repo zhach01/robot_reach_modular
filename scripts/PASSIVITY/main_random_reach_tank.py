@@ -66,7 +66,7 @@ def main():
         waypoints, MinJerkParams(tc.Vmax, tc.Amax, tc.Jmax, tc.gamma_time_scale)
     )
 
-    # Tight path-following (same tuning as center-out): match_torch=False applies
+    # Tight path-following (same tuning as center-out): strict_passivity=False applies
     # the inverse-dynamics feedforward ungated, and the stiffer task gain +
     # feedforward (K0=4000, Kff=2.0, critical zeta) keep the actual endpoint on
     # the straight reference line instead of bowing ~5-8 mm off it. RMSE 2.17 -> 1.05 mm.
@@ -75,7 +75,7 @@ def main():
         K0=np.diag([4000.0, 4000.0]),
         Kff=2.0,
         zeta=1.0,
-        match_torch=False,
+        strict_passivity=False,
         KI=np.array([0.0, 0.0]),
         Imax=np.array([0.0, 0.0]),
         eps=num.eps,
