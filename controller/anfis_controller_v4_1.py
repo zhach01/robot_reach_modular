@@ -232,13 +232,16 @@ class ANFISModuleV41:
         self.P = (self.P - np.outer(K, phiTP)) / self.lambda_ff
         self.P = 0.5 * (self.P + self.P.T)
 
-        # keep PD
+        # keep PD. eigvalsh returns ascending eigenvalues; a uniform identity
+        # shift moves every eigenvalue by `shift`, so the post-shift max is just
+        # eig[-1] + shift -> one eigendecomposition instead of two. Bit-identical.
         eig = np.linalg.eigvalsh(self.P)
-        mine = float(np.min(eig))
+        mine = float(eig[0])
+        shift = 0.0
         if mine < 1e-6:
-            self.P += (1e-6 - mine + 1e-8) * np.eye(self.n_params)
-        eig = np.linalg.eigvalsh(self.P)
-        maxe = float(np.max(eig))
+            shift = 1e-6 - mine + 1e-8
+            self.P += shift * np.eye(self.n_params)
+        maxe = float(eig[-1]) + shift
         if maxe > 1e5:
             self.P *= (1e5 / maxe)
 
