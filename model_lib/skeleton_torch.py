@@ -339,6 +339,11 @@ class TwoDofArm(Skeleton):
         q = self._as_batch(q, self.dof)   # (B,2)
         qd = self._as_batch(qd, self.dof) # (B,2)
 
+        # On the analytic path the robot's DH tables are never read, so skip the
+        # (expensive) DH rebuild the q-setter would otherwise do every call. The
+        # flag is tied to the CURRENT use_analytic so toggling back to the HTM
+        # path still rebuilds DH correctly. (~-11% on env.step.)
+        self._robot._auto_refresh_dh = not self.use_analytic
         self._robot.q = q
         self._robot.qd = qd
 

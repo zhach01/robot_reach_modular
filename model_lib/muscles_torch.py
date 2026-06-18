@@ -101,13 +101,21 @@ def _clip(x: Tensor, lo: float | Tensor | None = None, hi: float | Tensor | None
     """
     if lo is None and hi is None:
         return x
+    # Fast path: python-scalar bounds (the common case) go straight to the fused
+    # clamp_* ops, which accept python floats with no tensor conversion. Bit-
+    # identical to minimum/maximum/clamp and differentiable.
+    lo_scalar = lo is None or not torch.is_tensor(lo)
+    hi_scalar = hi is None or not torch.is_tensor(hi)
+    if lo_scalar and hi_scalar:
+        if lo is None:
+            return x.clamp_max(hi)
+        if hi is None:
+            return x.clamp_min(lo)
+        return x.clamp(lo, hi)
+    # Tensor-bound fallback
     if lo is None:
-        if not torch.is_tensor(hi):
-            hi = torch.as_tensor(hi, dtype=x.dtype, device=x.device)
         return torch.minimum(x, hi)
     if hi is None:
-        if not torch.is_tensor(lo):
-            lo = torch.as_tensor(lo, dtype=x.dtype, device=x.device)
         return torch.maximum(x, lo)
     if not torch.is_tensor(lo):
         lo = torch.as_tensor(lo, dtype=x.dtype, device=x.device)
