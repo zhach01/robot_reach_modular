@@ -1,9 +1,6 @@
 #!/usr/bin/env python3
-# scripts/ANFIS/main_random_reach_v41.py
-
 import os
 import numpy as np
-import matplotlib.pyplot as plt
 
 from model_lib.numpy.environment import Environment
 from model_lib.numpy.muscles import RigidTendonHillMuscle
@@ -21,10 +18,11 @@ from config import (
 from tasks.numpy.random_reach import Task as RandomReachTask
 from trajectory.numpy.minjerk import MinJerkLinearTrajectory, MinJerkParams
 
-from controller.numpy.anfis_controller_v4_1 import ANFISControllerV41, ANFISv41Params
+from controller.numpy.anfis_controller import ANFISController, ANFISParams
 
 from sim.numpy.simulator import TargetReachSimulator
 from plotting.plots import plot_all, make_animations, hold_anims
+import matplotlib.pyplot as plt
 
 
 def build_env(pc: PlantConfig):
@@ -36,7 +34,6 @@ def build_env(pc: PlantConfig):
         n_ministeps=pc.n_ministeps,
         integration_method=pc.integration_method,
     )
-
     env = Environment(
         effector=arm,
         max_ep_duration=pc.max_ep_duration,
@@ -46,10 +43,8 @@ def build_env(pc: PlantConfig):
         vision_delay=arm.dt,
         name="RandomReachEnv",
     )
-
     q0 = np.deg2rad(np.array(pc.q0_deg))
     qd0 = np.array(pc.qd0)
-
     env.reset(
         options={
             "joint_state": np.concatenate([q0, qd0])[None, :],
@@ -69,67 +64,79 @@ def main():
 
     env, arm, q0 = build_env(pc)
 
-    # trajectory
     task = RandomReachTask(n_points=1, radius=0.10, seed=0)
     waypoints = task.build_waypoints(env)
     traj = MinJerkLinearTrajectory(
         waypoints, MinJerkParams(tc.Vmax, tc.Amax, tc.Jmax, tc.gamma_time_scale)
     )
 
-    # rules persistence
-    rules_path = "ANFIS/saved_model/anfis_v41_rules.npz"
+    # ---------------- ANFIS PARAMS ----------------
+    rules_path = "ANFIS/saved_model/anfis_rules.npz"
     os.makedirs(os.path.dirname(rules_path), exist_ok=True)
 
-    p = ANFISv41Params(
-        # learning ON for demo (set False for deployment)
-        enable_learning=True,
-        adapt_every=2,
-        warmup_steps=50,
+    p = ANFISParams(
+        online_adapt=True,
 
-        # teacher
-        teacher_Kp=300.0,
-        teacher_Kd=60.0,
-        anchor_rho=0.3,
+        # teacher inside controller (stable)
+        teacher_mode="pd",
+        Kp_teacher=20.0,
+        Kd_teacher=4.0,
+        Ki_teacher=0.0,
 
-        # feedforward toggles from your config
+        # online LSE
+        lse_reg=1e-2,
+        adapt_every=50,
+        min_fit_samples=150,
+        buffer_size=400,
+
+        # replace teacher gradually
+        alpha_final=1.0,
+        alpha_warmup_steps=1500,
+
+        # persistence
+        rules_path=rules_path,
+        autosave_every=200,
+
+        # keep your toggles for comp if you want
         enable_gravity_comp=toggles.enable_gravity_comp,
         enable_coriolis_comp=toggles.enable_velocity_comp,
 
-        # numerics from your config
+        # guards
         eps=num.eps,
         lam_os_max=num.lam_os_max,
         sigma_thresh=num.sigma_thresh,
         gate_pow=num.gate_pow,
 
-        # muscle inversion
         bisect_iters=ifc.bisect_iters,
-
-        # persistence
-        rules_path=rules_path,
-        autosave_every=0,
     )
 
-    ctrl = ANFISControllerV41(env, arm, p)
+    ctrl = ANFISController(env, arm, p)
 
-    loaded = ctrl.load_rules(rules_path)
-    print(f"[ANFIS v4.1] load_rules={loaded}  path='{rules_path}'")
+    # ---------------- LOAD OR WARM-START ----------------
+    loaded = ctrl.load_rules(p.rules_path)
+    print(f"[ANFIS] load_rules={loaded}  path='{p.rules_path}'")
 
-    # IMPORTANT: simulator expects ctrl.qref
+    if not loaded:
+        # Warm-start: ANFIS behaves like PD immediately
+        ctrl.init_pd(Kp_q=p.Kp_teacher, Kd_q=p.Kd_teacher, bias=0.0)
+        print("[ANFIS] warm-started ANFIS consequents to PD")
+
+    # IMPORTANT: ensures qref exists + clears buffers (does NOT wipe loaded rules)
     ctrl.reset(q0)
 
-    # run
+    # ---------------- RUN ----------------
     steps = int(pc.max_ep_duration / arm.dt)
     sim = TargetReachSimulator(env, arm, ctrl, traj, steps)
     logs = sim.run()
 
-    # save at end
+    # ---------------- SAVE AT END ----------------
     try:
-        ctrl.save_rules(rules_path)
-        print(f"[ANFIS v4.1] saved -> '{rules_path}'")
+        ctrl.save_rules(p.rules_path)
+        print(f"[ANFIS] saved rules to '{p.rules_path}'")
     except Exception as ex:
-        print("[ANFIS v4.1] WARNING: save failed:", ex)
+        print("[ANFIS] WARNING: could not save rules:", ex)
 
-    # plots
+    # ---------------- PLOTS ----------------
     k, tvec = logs.time(arm.dt)
     plot_all(logs, tvec, center=task.center, targets=task.targets)
 
@@ -145,7 +152,7 @@ def main():
         )
         hold_anims(anims)
 
-    print("Random reach v4.1 demo complete.")
+    print("Random reach demo complete.")
     plt.show()
 
 

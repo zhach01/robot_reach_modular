@@ -14,11 +14,11 @@ import numpy as np
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from controller.numpy.anfis_controller_v4_1 import ANFISModuleV41
+from controller.numpy.anfis_controller import ANFISModule
 
 
 def _unit():
-    return ANFISModuleV41(n_mf=3, e_range=(-1.5, 1.5), ed_range=(-3.0, 3.0),
+    return ANFISModule(n_mf=3, e_range=(-1.5, 1.5), ed_range=(-3.0, 3.0),
                           forgetting_factor=0.995, P0_scale=100.0,
                           inertia=0.05, omega_n=20.0, zeta=1.0)
 

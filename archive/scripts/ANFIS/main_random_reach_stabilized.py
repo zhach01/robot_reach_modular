@@ -18,7 +18,7 @@ from config import (
 )
 from tasks.numpy.random_reach import Task as RandomReachTask
 from trajectory.numpy.minjerk import MinJerkLinearTrajectory, MinJerkParams
-from controller.numpy.anfis_controller import ANFISController, ANFISParams
+from controller.numpy.anfis_controller_test import ANFISController, ANFISParams
 from sim.numpy.simulator import TargetReachSimulator
 from plotting.plots import plot_all, make_animations, hold_anims
 
