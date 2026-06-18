@@ -89,7 +89,10 @@ class NMPCParams:
 
     # stage / terminal weights
     Wx: np.ndarray = field(default_factory=lambda: np.diag([1500.0, 1500.0]))
-    Wv: np.ndarray = field(default_factory=lambda: np.diag([20.0, 20.0]))
+    # Wv was 20: too little velocity damping relative to Wx=1500, which produced a
+    # steady-state limit cycle once the dynamics were corrected (the C1 fix). Raising
+    # to 70 removes the oscillation: steady-state tracking 7.2mm -> <1mm.
+    Wv: np.ndarray = field(default_factory=lambda: np.diag([70.0, 70.0]))
     Wu: np.ndarray = field(default_factory=lambda: np.diag([2e-3, 2e-3]))
     # terminal: make the goal sticky (x_N≈x*, xdot_N≈0)
     WN: np.ndarray = field(default_factory=lambda: np.diag([40e4, 40e4, 80e2, 80e2]))
