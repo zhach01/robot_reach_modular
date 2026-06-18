@@ -88,6 +88,15 @@ def test_pdif_torch_tracks():
     assert err < 0.01, f"PD/IF failed to track: {err*1000:.1f} mm"
 
 
+def test_osc_torch_tracks():
+    from controller.torch.osc_controller import OSCController, OSCParams
+    env, arm, pc = _build_env()
+    traj, target = _make_traj(env)
+    ctrl = OSCController(env, arm, OSCParams(Kp=4000.0, Kv=126.0))
+    err = _final_error(env, arm, ctrl, traj, target)
+    assert err < 0.01, f"OSC failed to track: {err*1000:.1f} mm"
+
+
 def test_sliding_mode_torch_tracks():
     from controller.torch.sliding_mode import SlidingModeController, SlidingModeParams
     env, arm, pc = _build_env()
