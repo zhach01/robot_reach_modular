@@ -639,14 +639,6 @@ class NonlinearMPCControllerTorch:
         y0 = torch.cat([x[0], xd[0]], dim=0)      # (4,)
 
         # --- lam_sing (extra damping near singularities) ---
-        #sminJ_val = float(sminJ)
-        #if sminJ_val <= self.p.sigma_target:
-         #   ratio = (self.p.ns_sigma_target / max(sminJ_val, 1e-9)) - 1.0  # >=0 near singular
-         #   lam_sing = min(max(self.p.lam_sing_gain * (ratio ** 2), 0.0), self.p.lam_sing_max)
-        #else:
-         #   lam_sing = 0.0
-
-        # --- lam_sing (extra damping near singularities) ---
         sminJ_val = float(sminJ)
         if sminJ_val <= self.p.sigma_target:
             # use sigma_target (same as NumPy) for both threshold and ratio
@@ -760,7 +752,7 @@ class NonlinearMPCControllerTorch:
             af_now = active_force_from_activation(a0_vec, lenvel, self.env.muscle)
             F_bias = Fmax_v * (af_now + flpe)
             F_des = apply_internal_force_regulation(
-                -Rm, F_des, F_bias,
+                -Rm, F_des, F_bias, Fmax_v,   # 4th positional Fmax_vec (was missing -> TypeError when scale>0)
                 eps=self.p.eps,
                 linesearch_eps=self.p.linesearch_eps,
                 linesearch_safety=self.p.linesearch_safety,

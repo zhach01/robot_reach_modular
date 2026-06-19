@@ -70,7 +70,7 @@ class PDIFParams:
     """Optimized PD+IF parameters (matches the numpy canonical controller)."""
 
     # task-space stiffness and (fallback) damping
-    Kp_task: Any = field(default_factory=lambda: [1600.0, 1600.0])
+    Kp_task: Any = field(default_factory=lambda: [800.0, 800.0])   # synced to numpy (was 1600 -> 2x stiffness divergence)
     Kd_task: Any = field(default_factory=lambda: [60.0, 60.0])
     Kff: float = 1.0
 

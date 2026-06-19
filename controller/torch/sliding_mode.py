@@ -47,11 +47,13 @@ def _first(x: Tensor) -> Tensor:
 
 
 def _sat_vec(s: Tensor, phi: Tensor) -> Tensor:
-    return torch.clamp(s / phi, -1.0, 1.0)
+    return torch.clamp(s / (phi + 1e-12), -1.0, 1.0)   # +eps: numpy parity, NaN-safe if phi=0
 
 
 def _blend_weight_from_cond(cond_val: Tensor, lo: float, hi: float) -> Tensor:
-    return torch.clamp((cond_val - lo) / (hi - lo), 0.0, 1.0)
+    # smoothstep over [lo, hi] -- matches numpy sliding/PD-IF/OSC (was a linear ramp).
+    a = torch.clamp((cond_val - lo) / (hi - lo), 0.0, 1.0)
+    return a * a * (3.0 - 2.0 * a)
 
 
 def _safe_cond(A: Tensor, fallback: float = 1e9) -> Tensor:
