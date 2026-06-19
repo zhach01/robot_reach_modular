@@ -5,11 +5,12 @@
 # Controllers (4 classical): impedance=PD/IF, passivity=energy-tank, sliding-mode, OSC.
 # Tasks (4): T1 center-out, T2 obstacle, T3 load-hold, T4 Lissajous.
 # Protocol (paper Section X-A "common simulation environment"):
-#   - sensor noise: sigma_theta = 0.25 deg on measured joint angles, sigma_x = 0.6 mm
-#     on the measured endpoint (injected on the CONTROLLER feedback only; the plant
-#     integrates the true state). Controllers read env.states directly, so we perturb
-#     that dict before compute() and restore it before step().
-#   - motor delay: 20 ms transport delay on the applied excitation.
+#   - plant integration: RK4 @ 0.1 ms sub-steps (PLANT_INTEGRATION / PLANT_SUBSTEP_S).
+#   - motor delay: 20 ms transport delay on the applied excitation (ring buffer here).
+#   - sensor noise: sigma_theta = 0.25 deg on joint angles, sigma_x = 0.6 mm on the
+#     endpoint. Both the noise and the 20 ms delay compensation live in the control law
+#     via PredictiveController (the lead predictor IS part of the controller), not in
+#     the simulator; the plant always integrates the true state.
 #   - disturbance: 0.35 N.m impulsive elbow torque for 60 ms on every 5th reach segment.
 # Metrics: endpoint RMSE [cm], integrated effort E = int sum_i a_i^2 dt, RTF [x real-time].
 # The perturbed condition is averaged over --seeds noise realizations (mean +/- SD).
@@ -38,6 +39,7 @@ from controller.numpy.pd_if_controller import PDIFController, PDIFParams
 from controller.numpy.energy_tank_controller import EnergyTankController, EnergyTankParams
 from controller.numpy.sliding_mode import SlidingModeController, SlidingModeParams
 from controller.numpy.osc_controller import OSCController, OSCParams
+from controller.numpy.predictive import PredictiveController
 
 # paper protocol constants
 SIGMA_THETA = np.deg2rad(0.25)   # rad, joint-angle sensor noise
@@ -142,46 +144,30 @@ def _seg_index(tgrid, t):
 
 def run_one(env, arm, ctrl, traj, task, steps, q0, info, perturb, rng):
     dt = float(arm.dt)
-    ctrl.reset(q0.copy())
     zero = np.zeros((1, 2))
     load = info.get("load", None)
     tgrid = getattr(traj, "tgrid", None)
     delay_steps = int(round((DELAY_MS / 1000.0) / dt)) if perturb else 0
-    pred_h = (delay_steps * dt) * DELAY_COMP_FRAC if (perturb and DELAY_COMP) else 0.0
-    qd_prev = None
-    abuf = []
     eff = env.effector
 
+    # Delay compensation + sensor noise live in the control law (predictive wrapper),
+    # not the harness. Under the perturbed protocol every controller is wrapped: it is
+    # given the state predicted DELAY_MS ahead (lead disabled if DELAY_COMP is off) with
+    # sensor noise on that measurement. The harness keeps only the plant-side effects
+    # (actuator transport-delay buffer, disturbance torque, endpoint load).
+    if perturb:
+        pred_h = (delay_steps * dt) * DELAY_COMP_FRAC if DELAY_COMP else 0.0
+        ctrl = PredictiveController(ctrl, eff, pred_h, dt, rng=rng,
+                                    sigma_theta=SIGMA_THETA, sigma_x=SIGMA_X)
+    ctrl.reset(q0.copy())
+
+    abuf = []
     xs, refs, effort = [], [], 0.0
     t0 = time.perf_counter()
     for k in range(steps):
         t_now = k * dt
         x_d, xd_d, xdd_d = traj.sample(t_now)
-
-        # --- delay compensation + sensor noise on the controller feedback ---
-        # (perturb -> predict state at t+delay -> add noise -> compute -> restore true state)
-        if perturb:
-            q_true = eff.states["joint"].copy()
-            x_true = eff.states["cartesian"].copy()
-            q = q_true[0, :2]; qd = q_true[0, 2:]
-            qdd = np.zeros(2) if qd_prev is None else (qd - qd_prev) / dt
-            qd_prev = qd.copy()
-            # second-order lead predictor to the moment the command actually lands
-            q_p = q + qd * pred_h + 0.5 * qdd * pred_h * pred_h
-            qd_p = qd + qdd * pred_h
-            jp = np.concatenate([q_p, qd_p])[None, :]
-            cp = np.asarray(eff.joint2cartesian(joint_state=jp)).copy()
-            jp = jp.copy()
-            jp[:, :2] += rng.normal(0.0, SIGMA_THETA, size=(1, 2))   # sensor noise on the measurement
-            cp[:, :2] += rng.normal(0.0, SIGMA_X, size=(1, 2))
-            eff.states["joint"] = jp
-            eff.states["cartesian"] = cp
-            diag = ctrl.compute(x_d, xd_d, xdd_d)
-            eff.states["joint"] = q_true            # restore true state for the plant
-            eff.states["cartesian"] = x_true
-            env.skeleton._set_state(q_true[0, :2], q_true[0, 2:])
-        else:
-            diag = ctrl.compute(x_d, xd_d, xdd_d)
+        diag = ctrl.compute(x_d, xd_d, xdd_d)
 
         a = np.asarray(diag["act"]).reshape(-1)
         if delay_steps > 0:
