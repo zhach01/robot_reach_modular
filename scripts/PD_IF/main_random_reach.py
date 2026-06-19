@@ -1,23 +1,30 @@
 #!/usr/bin/env python3
 import numpy as np
-from model_lib.environment_numpy import Environment
-from model_lib.muscles_numpy import RigidTendonHillMuscle
-from model_lib.effector_numpy import RigidTendonArm26
+import matplotlib.pyplot as plt
+
+from model_lib.numpy.environment import Environment
+from model_lib.numpy.muscles import RigidTendonHillMuscle
+from model_lib.numpy.effector import RigidTendonArm26
+
 from config import (
     PlantConfig,
     ControlToggles,
-    ControlGains,
     Numerics,
     InternalForceConfig,
     TrajectoryConfig,
     RunConfig,
 )
-from tasks.random_reach import Task as RandomReachTask
-from trajectory.minjerk import MinJerkLinearTrajectory, MinJerkParams
-from controller.pd_if_controller import PDIFController, PDIFParams
-from sim.simulator import TargetReachSimulator
+
+from tasks.numpy.random_reach import Task as RandomReachTask
+from trajectory.numpy.minjerk import MinJerkLinearTrajectory, MinJerkParams
+from sim.numpy.simulator import TargetReachSimulator
 from plotting.plots import plot_all, make_animations, hold_anims
-import matplotlib.pyplot as plt
+
+# Optimized PD+IF controller
+try:
+    from controller.numpy.pd_if_controller import PDIFController, PDIFParams
+except ImportError:
+    from pd_if_controller import PDIFController, PDIFParams
 
 
 def build_env(pc: PlantConfig):
@@ -36,10 +43,12 @@ def build_env(pc: PlantConfig):
         obs_noise=0.0,
         proprioception_delay=arm.dt,
         vision_delay=arm.dt,
-        name="RandomReachEnv",
+        name="RandomReachEnv(OptimizedPDIF)",
     )
+
     q0 = np.deg2rad(np.array(pc.q0_deg))
     qd0 = np.array(pc.qd0)
+
     env.reset(
         options={
             "joint_state": np.concatenate([q0, qd0])[None, :],
@@ -52,11 +61,11 @@ def build_env(pc: PlantConfig):
 def main():
     pc = PlantConfig()
     toggles = ControlToggles()
-    gains = ControlGains()
     num = Numerics()
     ifc = InternalForceConfig()
     tc = TrajectoryConfig()
     run = RunConfig()
+
     env, arm, q0 = build_env(pc)
 
     task = RandomReachTask(n_points=1, radius=0.10, seed=0)
@@ -65,34 +74,50 @@ def main():
         waypoints, MinJerkParams(tc.Vmax, tc.Amax, tc.Jmax, tc.gamma_time_scale)
     )
 
+    # ============================================================
+    # FORCE the exact "aggressive" gains from your optimization report
+    # ============================================================
     p = PDIFParams(
-        Kp_x=gains.Kp_x,
-        Kff_x=gains.Kff_x,
-        Kp_q=gains.Kp_q,
-        Kd_q=gains.Kd_q,
-        eps=num.eps,
-        lam_os_smin_target=num.lam_os_smin_target,
-        lam_os_max=num.lam_os_max,
-        sigma_thresh=num.sigma_thresh,
-        gate_pow=num.gate_pow,
-        enable_internal_force=toggles.enable_internal_force,
-        enable_inertia_comp=toggles.enable_inertia_comp,
-        enable_gravity_comp=toggles.enable_gravity_comp,
-        enable_velocity_comp=toggles.enable_velocity_comp,
-        enable_joint_damping=toggles.enable_joint_damping,
-        cocon_a0=ifc.cocon_a0,
-        bisect_iters=ifc.bisect_iters,
-        linesearch_eps=num.linesearch_eps,
-        linesearch_safety=num.linesearch_safety,
-    )
-    ctrl = PDIFController(env, arm, p)
-    steps = int(pc.max_ep_duration / arm.dt)
+        # --- optimized gains (from your table) ---
+        Kp_task=np.array([1600.0, 1600.0], dtype=float),
+        damping_ratio=0.7,
+        Kff=1.0,
+        use_critical_damping=True,
 
+        # --- dynamics compensation toggles ---
+        enable_inertia_comp=bool(getattr(toggles, "enable_inertia_comp", True)),
+        enable_gravity_comp=bool(getattr(toggles, "enable_gravity_comp", True)),
+        enable_coriolis_comp=bool(getattr(toggles, "enable_velocity_comp", True)),
+
+        # --- nullspace (keep mild & safe) ---
+        enable_nullspace=True,
+        Kp_null=20.0,
+        Kd_null=5.0,
+
+        # --- guards / numerics (keep from config) ---
+        eps=float(getattr(num, "eps", 1e-6)),
+        lam_os_max=float(getattr(num, "lam_os_max", 200.0)),
+        sigma_thresh=float(getattr(num, "sigma_thresh", 1e-4)),
+        gate_pow=float(getattr(num, "gate_pow", 2.0)),
+
+        # --- muscle inversion ---
+        bisect_iters=int(getattr(ifc, "bisect_iters", 12)),
+
+        # --- internal force: OFF (as in your optimization conclusion) ---
+        enable_internal_force=False,
+        cocon_level=0.0,
+    )
+
+    ctrl = PDIFController(env, arm, p)
+    ctrl.reset(q0)
+
+    steps = int(pc.max_ep_duration / arm.dt)
     sim = TargetReachSimulator(env, arm, ctrl, traj, steps)
     logs = sim.run()
 
     k, tvec = logs.time(arm.dt)
     plot_all(logs, tvec, center=task.center, targets=task.targets)
+
     if run.animate:
         anims = make_animations(
             logs,
@@ -104,9 +129,11 @@ def main():
             targets=task.targets,
         )
         hold_anims(anims)
-    print("Random reach demo complete.")
+
+    print("Random reach demo (Optimized PD+IF, aggressive tuning) complete.")
     plt.show()
 
 
 if __name__ == "__main__":
     main()
+

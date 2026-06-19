@@ -4,13 +4,13 @@ from __future__ import annotations
 import argparse, numpy as np, matplotlib.pyplot as plt
 from typing import Tuple, List
 
-from model_lib.environment_numpy import Environment
-from model_lib.muscles_numpy import RigidTendonHillMuscle
-from model_lib.effector_numpy import RigidTendonArm26
+from model_lib.numpy.environment import Environment
+from model_lib.numpy.muscles import RigidTendonHillMuscle
+from model_lib.numpy.effector import RigidTendonArm26
 from config import PlantConfig, TrajectoryConfig, RunConfig
-from trajectory.minjerk import MinJerkLinearTrajectory, MinJerkParams
-from controller.hybrid_bc_a import RLPolicyParams, RLPolicy, RLControllerA, RLControllerAParams
-from sim.simulator import TargetReachSimulator
+from trajectory.numpy.minjerk import MinJerkLinearTrajectory, MinJerkParams
+from controller.numpy.hybrid_bc_a import RLPolicyParams, RLPolicy, RLControllerA, RLControllerAParams
+from sim.numpy.simulator import TargetReachSimulator
 from plotting.plots import plot_all, make_animations, hold_anims
 
 # -------------------- helpers --------------------
@@ -93,10 +93,10 @@ def parse_args():
     ap.add_argument("--device", type=str, default="cpu")
 
     # target generation
-    ap.add_argument("--goals", type=int, default=8)
+    ap.add_argument("--goals", type=int, default=4)
     ap.add_argument("--radius_min", type=float, default=0.07)
     ap.add_argument("--radius_max", type=float, default=0.16)
-    ap.add_argument("--center_mode", type=str, choices=["current","fixed"], default="current")
+    ap.add_argument("--center_mode", type=str, choices=["current","fixed"], default="fixed")
     ap.add_argument("--center_x", type=float, default=0.00)
     ap.add_argument("--center_y", type=float, default=0.55)
     ap.add_argument("--return_to_center", action="store_true", default=True)

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 import numpy as np
-from model_lib.environment_numpy import Environment
-from model_lib.muscles_numpy import RigidTendonHillMuscle
-from model_lib.effector_numpy import RigidTendonArm26
+from model_lib.numpy.environment import Environment
+from model_lib.numpy.muscles import RigidTendonHillMuscle
+from model_lib.numpy.effector import RigidTendonArm26
 from config import (
     PlantConfig,
     ControlToggles,
@@ -12,10 +12,10 @@ from config import (
     TrajectoryConfig,
     RunConfig,
 )
-from tasks.center_out import Task as CenterOutTask
-from trajectory.minjerk import MinJerkLinearTrajectory, MinJerkParams
-from controller.pd_if_controller import PDIFController, PDIFParams
-from sim.simulator import TargetReachSimulator
+from tasks.numpy.center_out import Task as CenterOutTask
+from trajectory.numpy.minjerk import MinJerkLinearTrajectory, MinJerkParams
+from controller.numpy.pd_if_controller import PDIFController, PDIFParams
+from sim.numpy.simulator import TargetReachSimulator
 from plotting.plots import plot_all, make_animations, hold_anims
 import matplotlib.pyplot as plt
 
@@ -65,25 +65,27 @@ def main():
         waypoints, MinJerkParams(tc.Vmax, tc.Amax, tc.Jmax, tc.gamma_time_scale)
     )
 
+    # Optimized PD+IF gains (same canonical controller as main_random_reach).
+    # The critically-damped task gain removes the large center-out overshoot the
+    # legacy controller had on the far reaches.
     p = PDIFParams(
-        Kp_x=gains.Kp_x,
-        Kff_x=gains.Kff_x,
-        Kp_q=gains.Kp_q,
-        Kd_q=gains.Kd_q,
-        eps=num.eps,
-        lam_os_smin_target=num.lam_os_smin_target,
-        lam_os_max=num.lam_os_max,
-        sigma_thresh=num.sigma_thresh,
-        gate_pow=num.gate_pow,
-        enable_internal_force=toggles.enable_internal_force,
-        enable_inertia_comp=toggles.enable_inertia_comp,
-        enable_gravity_comp=toggles.enable_gravity_comp,
-        enable_velocity_comp=toggles.enable_velocity_comp,
-        enable_joint_damping=toggles.enable_joint_damping,
-        cocon_a0=ifc.cocon_a0,
-        bisect_iters=ifc.bisect_iters,
-        linesearch_eps=num.linesearch_eps,
-        linesearch_safety=num.linesearch_safety,
+        Kp_task=np.array([2400.0, 2400.0], dtype=float),
+        damping_ratio=0.7,
+        Kff=1.0,
+        use_critical_damping=True,
+        enable_inertia_comp=bool(getattr(toggles, "enable_inertia_comp", True)),
+        enable_gravity_comp=bool(getattr(toggles, "enable_gravity_comp", True)),
+        enable_coriolis_comp=bool(getattr(toggles, "enable_velocity_comp", True)),
+        enable_nullspace=True,
+        Kp_null=20.0,
+        Kd_null=5.0,
+        eps=float(getattr(num, "eps", 1e-6)),
+        lam_os_max=float(getattr(num, "lam_os_max", 200.0)),
+        sigma_thresh=float(getattr(num, "sigma_thresh", 1e-4)),
+        gate_pow=float(getattr(num, "gate_pow", 2.0)),
+        bisect_iters=int(getattr(ifc, "bisect_iters", 12)),
+        enable_internal_force=False,
+        cocon_level=0.0,
     )
     ctrl = PDIFController(env, arm, p)
     steps = int(pc.max_ep_duration / arm.dt)

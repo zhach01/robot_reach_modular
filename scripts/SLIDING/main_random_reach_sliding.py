@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 import numpy as np
-from model_lib.environment_numpy import Environment
-from model_lib.muscles_numpy import RigidTendonHillMuscle
-from model_lib.effector_numpy import RigidTendonArm26
+from model_lib.numpy.environment import Environment
+from model_lib.numpy.muscles import RigidTendonHillMuscle
+from model_lib.numpy.effector import RigidTendonArm26
 from config import (
     PlantConfig,
     ControlToggles,
@@ -12,10 +12,10 @@ from config import (
     TrajectoryConfig,
     RunConfig,
 )
-from tasks.random_reach import Task as RandomReachTask
-from trajectory.minjerk import MinJerkLinearTrajectory, MinJerkParams
-from controller.sliding_mode import SlidingModeController, SlidingModeParams
-from sim.simulator import TargetReachSimulator
+from tasks.numpy.random_reach import Task as RandomReachTask
+from trajectory.numpy.minjerk import MinJerkLinearTrajectory, MinJerkParams
+from controller.numpy.sliding_mode import SlidingModeController, SlidingModeParams
+from sim.numpy.simulator import TargetReachSimulator
 from plotting.plots import plot_all, make_animations, hold_anims
 import matplotlib.pyplot as plt
 
@@ -49,13 +49,15 @@ def build_env(pc: PlantConfig):
     return env, arm, q0
 
 
-def _vec2(x, fallback=(1.0, 1.0)):
-    v = np.array(x, dtype=float).ravel()
-    if v.size == 2:
-        return v
-    if v.size == 1:
-        return np.array([v[0], v[0]], dtype=float)
-    return np.array(fallback, dtype=float)
+def _scalar(x, default=1.0) -> float:
+    """Accept scalar or array-like, return float."""
+    try:
+        v = np.array(x, dtype=float).ravel()
+        if v.size >= 1:
+            return float(v[0])
+    except Exception:
+        pass
+    return float(default)
 
 
 def main():
@@ -75,76 +77,60 @@ def main():
         waypoints, MinJerkParams(tc.Vmax, tc.Amax, tc.Jmax, tc.gamma_time_scale)
     )
 
+    # ------------------------------------------------------------------
+    # Sliding-Mode gains (task-space = x,y)
+    # ------------------------------------------------------------------
+    lambda_surf = np.array([26.0, 26.0])     # surface slope (1/s)
 
-    # --- Sliding-Mode gains (task-space = x,y) ---
-    lambda_surf = np.array([26.0,26.0])   # np.array([16.0, 16.0]) slope of sliding surface on position error (e_x)
-                                            # ↑ larger => stiffer position feedback, faster convergence,
-                                            #             but more high-freq content (risk of chatter).
-                                            # ↓ smaller => softer, slower, smoother.
+    # NOTE: with switch_in_accel=True, K_switch behaves like an accel-gain.
+    # If you see spikes, try 1.0–2.0 first.
+    K_switch    = np.array([4.0, 4.0])
 
-    K_switch    = np.array([4.0, 4.0])    # amplitude of switching/robust term
-                                            # ↑ larger => stronger “push” against disturbances/model errors,
-                                            #             quicker error kill, but more torque spikes & allocator load.
-                                            # ↓ smaller => gentler, less chatter, may leave small steady ripples.
+    phi         = np.array([0.004, 0.004])   # boundary layer thickness
 
-    phi         = np.array([0.004, 0.004])    # boundary layer half-width for sat(s/phi)
-                                            # ↑ larger => wider linear zone → smoother, less chatter, but more
-                                            #             steady error near target.
-                                            # ↓ smaller => crisper tracking, but risk of buzz/sawtooth torques.
+    # Feedforward on desired xdd (scalar in new controller)
+    Kff_x = _scalar(gains.Kff_x, default=1.0)
 
-    # --- Nullspace posture (joint space). We keep it OFF for pure tracking ---
-    Kp_q        = np.array([0.0, 0.0])      # posture proportional gain
-    Kd_q        = np.array([0.0, 0.0])      # posture damping gain
-                                            # If you enable posture: 
-                                            # ↑ gains => joints get pulled to qref stronger/faster; can fight the task.
-                                            # ↓ gains => weaker posture influence; safer for tracking.        
-
-    # --- Build params (kept 1:1 with your config objects) ---
+    # ------------------------------------------------------------------
+    # Build params (MATCHES new SlidingModeParams in controller)
+    # ------------------------------------------------------------------
     p = SlidingModeParams(
-        lambda_surf=lambda_surf,             # see above
-        K_switch=K_switch,                   # see above
-        phi=phi,                             # see above
+        # core SMC
+        lambda_surf=lambda_surf,
+        K_switch=K_switch,
+        phi=phi,
 
-        Kff_x=_vec2(gains.Kff_x, (1.0, 1.0)),# feedforward on desired ẍ
-                                            # ↑ larger => follows the reference acceleration more; can reduce lag,
-                                            #             but if dynamics are mismatched it can excite oscillations.
-                                            # ↓ smaller => relies more on feedback; more robust, possibly slower.
+        # feedforward & comp flags
+        Kff_x=Kff_x,
+        enable_gravity_comp=toggles.enable_gravity_comp,
+        enable_velocity_comp=toggles.enable_velocity_comp,
+        enable_inertia_comp=toggles.enable_inertia_comp,
 
-        Kp_q=_vec2(Kp_q, (0.0, 0.0)),        # posture P (we pass our explicit values)
-        Kd_q=_vec2(Kd_q, (0.0, 0.0)),        # posture D
+        # optional nullspace/bias (keep off by default)
+        lambda_ns=0.0,
+        k_manip=0.0,
 
-        # --- Guards / gates (stability near singularities & poor conditioning) ---
-        eps=num.eps,                         # small positive for numeric safety in divisions/LS solves
-                                                # ↑ larger => more conservative numerics; ↓ smaller => more precise but risk NaNs.
-        lam_os_max=num.lam_os_max,           # cap on operational-space regularization
-                                            # ↑ larger => adds more damping near singular J; safer but less authority.
-        sigma_thresh=num.sigma_thresh,       # threshold for “danger zone” in S/J conditioning
-                                            # ↑ larger => earlier gating (more conservative); ↓ smaller => later gating.
-        gate_pow=num.gate_pow,               # how aggressively the gate fades control near singularity
-                                            # ↑ larger => gate drops faster; ↓ smaller => gate drops gently.
-    
-        # --- Plant compensation toggles (enable all for best tracking) ---
-        enable_internal_force=toggles.enable_internal_force,  # keep False for pure tracking (frees capacity)
-        enable_inertia_comp=toggles.enable_inertia_comp,       # True: better authority; False: more lag
-        enable_gravity_comp=toggles.enable_gravity_comp,       # True: removes load bias
-        enable_velocity_comp=toggles.enable_velocity_comp,     # True: cancels Coriolis/centrifugal
-        enable_joint_damping=toggles.enable_joint_damping,     # True: adds viscous joint damping in h term
+        # guards
+        eps=num.eps,
+        lam_os_max=num.lam_os_max,
+        sigma_thresh=num.sigma_thresh,
+        gate_pow=num.gate_pow,
 
-        # --- Allocation / inversion settings ---
-        cocon_a0=ifc.cocon_a0,               # baseline co-contraction (active force bias)
-                                            # ↑ larger => stiffer feel, higher effort; ↓ smaller => freer, less robust.
-        bisect_iters=ifc.bisect_iters,       # activation-from-force solver iterations
-                                            # ↑ larger => more accurate a(F) but slower.
-        linesearch_eps=num.linesearch_eps,   # internal line search tolerance (muscle IF regulation)
-        linesearch_safety=num.linesearch_safety, # step shrink factor (0..1): smaller => safer but slower
+        # muscle inversion
+        bisect_iters=ifc.bisect_iters,
+
+        # NEW safety knobs (important for singularity behavior)
+        switch_in_accel=True,          # should be True for the new robust version
+        use_condJ_for_blend=True,      # blend using cond(J) (earlier + correct)
+        cond_low=20.0,
+        cond_high=80.0,
+        elbow_min_rad=np.deg2rad(2.0),
     )
 
-
-
-
     ctrl = SlidingModeController(env, arm, p)
-    steps = int(pc.max_ep_duration / arm.dt)
+    ctrl.reset(q0)
 
+    steps = int(pc.max_ep_duration / arm.dt)
     sim = TargetReachSimulator(env, arm, ctrl, traj, steps)
     logs = sim.run()
 
@@ -161,9 +147,11 @@ def main():
             targets=task.targets,
         )
         hold_anims(anims)
+
     print("Random reach (Sliding-Mode) complete.")
     plt.show()
 
 
 if __name__ == "__main__":
     main()
+

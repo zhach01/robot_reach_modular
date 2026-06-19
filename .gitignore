@@ -21,3 +21,18 @@ htmlcov/
 # OS / editor
 .DS_Store
 *.swp
+
+_run_script.py
+_renders/
+models/
+*.pt
+motornet/saved_model/
+synergy/saved_model/
+controller_comparison_runs/
+hybrid_tank_runs/
+ANFIS/saved_model/
+motornet/training/
+synergy/training/
+synergy_model.npz
+results/
+_run_capture.py

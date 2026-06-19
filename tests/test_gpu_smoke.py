@@ -21,12 +21,12 @@ pytestmark = pytest.mark.skipif(
 
 
 def _build_arm(device):
-    from model_lib.skeleton_torch import TwoDofArm
+    from model_lib.torch.skeleton import TwoDofArm
     return TwoDofArm(device=device, dtype=torch.float64)
 
 
 def test_dynamics_on_cuda_matches_cpu():
-    import lib.dynamics.DynamicsHTM_torch_OPTIMIZED as DYN
+    import lib.dynamics.torch.DynamicsHTM as DYN
     q = [0.7, 1.1]
     arm_cpu = _build_arm("cpu")
     arm_gpu = _build_arm("cuda")
@@ -41,9 +41,9 @@ def test_dynamics_on_cuda_matches_cpu():
 
 def test_gradient_flows_on_cuda():
     """End-to-end gradient (loss -> fingertip -> ... -> activation) on the GPU."""
-    from model_lib.environment_torch import Environment
-    from model_lib.muscles_torch import RigidTendonHillMuscle
-    from model_lib.effector_torch import RigidTendonArm26
+    from model_lib.torch.environment import Environment
+    from model_lib.torch.muscles import RigidTendonHillMuscle
+    from model_lib.torch.effector import RigidTendonArm26
 
     dev = torch.device("cuda")
     mus = RigidTendonHillMuscle(min_activation=0.02, device=dev, dtype=torch.float64)

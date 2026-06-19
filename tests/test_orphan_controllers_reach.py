@@ -16,7 +16,7 @@ import pytest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-import model_lib.skeleton_numpy as sk_np
+import model_lib.numpy.skeleton as sk_np
 sk_np.USE_CACHE = False
 
 torch = pytest.importorskip("torch")
@@ -29,10 +29,10 @@ EP = 0.4  # short episode keeps the test fast
 
 
 def _build_env():
-    from model_lib.environment_torch import Environment
-    from model_lib.muscles_torch import RigidTendonHillMuscle
-    from model_lib.effector_torch import RigidTendonArm26
-    from trajectory.minjerk_torch import MinJerkLinearTrajectoryTorch, MinJerkParams
+    from model_lib.torch.environment import Environment
+    from model_lib.torch.muscles import RigidTendonHillMuscle
+    from model_lib.torch.effector import RigidTendonArm26
+    from trajectory.torch.minjerk import MinJerkLinearTrajectoryTorch, MinJerkParams
     pc, tc = PlantConfig(), TrajectoryConfig()
     mus = RigidTendonHillMuscle(min_activation=0.02, dtype=torch.float64)
     arm = RigidTendonArm26(muscle=mus, timestep=pc.timestep, damping=pc.damping,
@@ -52,7 +52,7 @@ def _build_env():
 
 
 def _run(env, arm, ctrl, traj, target):
-    from sim.simulator_torch import TargetReachSimulatorTorch
+    from sim.torch.simulator import TargetReachSimulatorTorch
     steps = int(EP / arm.dt)
     logs = TargetReachSimulatorTorch(env, arm, ctrl, traj, steps).run()
     k, _ = logs.time(float(arm.dt))
@@ -66,7 +66,7 @@ def _run(env, arm, ctrl, traj, target):
 
 
 def test_energy_tank_torch_reaches():
-    from controller.energy_tank_controller_torch import EnergyTankController, EnergyTankParams
+    from controller.torch.energy_tank_controller import EnergyTankController, EnergyTankParams
     env, arm, q0, target, traj = _build_env()
     g, num, tog, ifc = ControlGains(), Numerics(), ControlToggles(), InternalForceConfig()
     p = EnergyTankParams(
@@ -82,7 +82,7 @@ def test_energy_tank_torch_reaches():
 
 
 def test_nmpc_torch_reaches():
-    from controller.nmpc_task_torch import NonlinearMPCControllerTorch, NMPCParams
+    from controller.torch.nmpc_task import NonlinearMPCControllerTorch, NMPCParams
     env, arm, q0, target, traj = _build_env()
     p = NMPCParams(N=12, dt_mpc=arm.dt)
     _run(env, arm, NonlinearMPCControllerTorch(env, arm, p), traj, target)

@@ -14,18 +14,18 @@ import pytest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-import model_lib.skeleton_numpy as sk_np
+import model_lib.numpy.skeleton as sk_np
 sk_np.USE_CACHE = False
 
 from config import PlantConfig, TrajectoryConfig
 
 
 def _build(Fmax, ep=1.5):
-    from model_lib.environment_numpy import Environment
-    from model_lib.muscles_numpy import RigidTendonHillMuscle
-    from model_lib.effector_numpy import RigidTendonArm26
-    from trajectory.minjerk import MinJerkLinearTrajectory, MinJerkParams
-    from controller.nmpc_task import NonlinearMPCController, NMPCParams
+    from model_lib.numpy.environment import Environment
+    from model_lib.numpy.muscles import RigidTendonHillMuscle
+    from model_lib.numpy.effector import RigidTendonArm26
+    from trajectory.numpy.minjerk import MinJerkLinearTrajectory, MinJerkParams
+    from controller.numpy.nmpc_task import NonlinearMPCController, NMPCParams
     pc, tc = PlantConfig(), TrajectoryConfig()
     mus = RigidTendonHillMuscle(min_activation=0.02)
     arm = RigidTendonArm26(muscle=mus, timestep=pc.timestep, damping=pc.damping,
@@ -45,7 +45,7 @@ def _build(Fmax, ep=1.5):
 
 
 def test_nmpc_tracks_with_adequate_force():
-    from sim.simulator import TargetReachSimulator
+    from sim.numpy.simulator import TargetReachSimulator
     env, arm, ctrl, traj, target = _build(Fmax=600.0, ep=1.5)
     steps = int(1.5 / arm.dt)
     logs = TargetReachSimulator(env, arm, ctrl, traj, steps).run()
