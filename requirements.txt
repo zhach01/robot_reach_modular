@@ -18,3 +18,5 @@ gymnasium
 sympy
 pandas      # imported by lib/kinematics/HTM.py (legacy)
 pytest      # test suite in tests/
+SALib>=1.5
+cma>=4.0
