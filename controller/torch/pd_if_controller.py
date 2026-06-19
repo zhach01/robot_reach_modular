@@ -359,6 +359,8 @@ class PDIFController:
         af_now = active_force_from_activation(a, lenvel, self.env.muscle)
         F_pred = torch.clamp(Fmax_vec * (af_now + flpe), min=0.0)
 
+        a_min = float(getattr(self.env.muscle, "min_activation", 0.0))
+        a = torch.clamp(a, a_min, 1.0)
         F_corr = saturation_repair_tau(
             -R, F_pred, a, self.env.muscle.min_activation, 1.0, Fmax_vec, tau_des=tau_des
         )
@@ -367,13 +369,17 @@ class PDIFController:
                 F_corr, lenvel, self.env.muscle, flpe, Fmax_vec,
                 iters=max(4, int(self.p.bisect_iters) - 4),
             )
+            # numpy parity: re-clamp act and recompute the produced force after repair
+            a = torch.clamp(a, a_min, 1.0)
+            af_now = active_force_from_activation(a, lenvel, self.env.muscle)
+            F_pred = torch.clamp(Fmax_vec * (af_now + flpe), min=0.0)
 
         kin_diag = pack_diag(sminJ=sminJ, lamJ=lamJ, alpha_J=alpha_J)
         diag = merge_diag(
             kin_diag, dyn_diag, mus_diag, pack_diag(lam_os=lam_os, eta=eta, eta2=eta2)
         )
         return {
-            "tau_des": tau_des, "R": R, "Fmax": Fmax_vec, "F_des": F_des,
+            "tau_des": tau_des, "R": R, "Fmax": Fmax_vec, "F_des": F_pred,  # post-repair (numpy parity)
             "act": a, "q": q, "qd": qd, "x": x, "xd": xd,
             "xref_tuple": (x_d, xd_d_g, xdd_d_g), "eta": eta2, "diag": diag,
         }
