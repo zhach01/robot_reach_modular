@@ -5,7 +5,7 @@
 # Controllers (4 classical): impedance=PD/IF, passivity=energy-tank, sliding-mode, OSC.
 # Tasks (4): T1 center-out, T2 obstacle, T3 load-hold, T4 Lissajous.
 # Protocol (paper Section X-A "common simulation environment"):
-#   - plant integration: RK4 @ 0.1 ms sub-steps (PLANT_INTEGRATION / PLANT_SUBSTEP_S).
+#   - plant integration: forward Euler @ 2 ms (PLANT_INTEGRATION / PLANT_SUBSTEP_S).
 #   - motor delay: 20 ms transport delay on the applied excitation (ring buffer here).
 #   - sensor noise: sigma_theta = 0.25 deg on joint angles, sigma_x = 0.6 mm on the
 #     endpoint. Both the noise and the 20 ms delay compensation live in the control law
@@ -49,9 +49,10 @@ DIST_TORQUE = 0.35               # N.m, elbow disturbance
 DIST_DUR = 0.060                 # s, disturbance pulse width
 DIST_EVERY = 5                   # every 5th reach segment
 
-# plant integration (paper Section X-A: RK4 @ 0.1 ms)
-PLANT_INTEGRATION = "rk4"
-PLANT_SUBSTEP_S = 0.1e-3          # 0.1 ms sub-step
+# plant integration: forward Euler @ 2 ms (project-default integrator, used throughout
+# the codebase; paper Section X-A updated from RK4 @ 0.1 ms to match).
+PLANT_INTEGRATION = "euler"
+PLANT_SUBSTEP_S = 2.0e-3          # 2 ms sub-step (n_ministeps -> 1)
 # delay compensation: Smith-style lead predictor on the controller feedback.
 # The 20 ms transport delay caps achievable bandwidth; we feed each controller a
 # model-based estimate of the joint/Cartesian state DELAY_MS ahead (second-order
@@ -62,7 +63,7 @@ DELAY_COMP_FRAC = 1.0            # fraction of the transport delay to predict ah
 
 def build_env(pc):
     muscle = RigidTendonHillMuscle(min_activation=0.02)
-    n_ministeps = max(1, int(round(pc.timestep / PLANT_SUBSTEP_S)))   # -> 0.1 ms sub-steps
+    n_ministeps = max(1, int(round(pc.timestep / PLANT_SUBSTEP_S)))   # sub-step = PLANT_SUBSTEP_S
     arm = RigidTendonArm26(muscle=muscle, timestep=pc.timestep, damping=pc.damping,
                            n_ministeps=n_ministeps, integration_method=PLANT_INTEGRATION)
     env = Environment(effector=arm, max_ep_duration=pc.max_ep_duration, action_noise=0.0,
