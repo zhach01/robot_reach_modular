@@ -77,6 +77,25 @@ def _activation_to_excitation(a_star, a_now, dt, tau_up, tau_down):
     return np.clip(u, 0.0, 1.0)
 
 
+def _blend_weight_from_cond(cond_val: float, lo: float, hi: float) -> float:
+    """0 -> 1 smoothstep blend over [lo, hi] (same security as PD-IF/sliding/OSC)."""
+    if cond_val <= lo:
+        return 0.0
+    if cond_val >= hi:
+        return 1.0
+    a = (cond_val - lo) / (hi - lo)
+    return float(a * a * (3.0 - 2.0 * a))
+
+
+def _safe_cond(A, fallback: float = 1e9) -> float:
+    """Robust condition number of the FULL Jacobian (blind-spot of cond(R))."""
+    try:
+        c = float(np.linalg.cond(A))
+        return c if np.isfinite(c) else float(fallback)
+    except Exception:
+        return float(fallback)
+
+
 # -----------------------------------------------------------------------------
 # Params
 # -----------------------------------------------------------------------------
@@ -165,6 +184,19 @@ class NMPCParams:
     ns_kp_boost: float = 40.0       # extra gain near singularity
     ns_kp_max: float = 60.0         # cap
     ns_sigma_target: float = 0.10   # where boosting begins
+
+    # ======= cond(J) singularity security (same as PD-IF/sliding/OSC) =======
+    # Blend the op-space MPC torque to a joint-space PD fallback (toward the IK
+    # posture, elbow floored out of full extension) as cond(J) rises -- cond(J)
+    # sees the full-extension Jacobian singularity that cond(R) is blind to.
+    enable_singularity_blend: bool = True
+    cond_low: float = 20.0
+    cond_high: float = 80.0
+    elbow_min_rad: float = field(default_factory=lambda: float(np.deg2rad(2.0)))
+    Kp_js: np.ndarray = field(default_factory=lambda: np.array([12.0, 10.0]))
+    Kd_js: np.ndarray = field(default_factory=lambda: np.array([2.5, 2.0]))
+    tau_scale_apply_thresh: float = 0.7
+    tau_scale_safety: float = 0.95
 
 
 # -----------------------------------------------------------------------------
@@ -441,8 +473,21 @@ class NonlinearMPCController:
         else:
             kp_eff = 0.0
 
-        # total torque and clip
-        tau_des = np.clip(tau_task + tau_ns, -self.p.tau_clip, self.p.tau_clip)
+        # total op-space torque
+        tau_os = tau_task + tau_ns
+
+        # --- cond(J) singularity security: blend to joint-space PD fallback ---
+        condJ = _safe_cond(J_xy)
+        if self.p.enable_singularity_blend:
+            w_sing = _blend_weight_from_cond(condJ, self.p.cond_low, self.p.cond_high)
+            q_star = np.asarray(self.qref, dtype=float).copy()
+            q_star[1] = max(float(q_star[1]), float(self.p.elbow_min_rad))  # elbow floor
+            tau_js = np.asarray(self.p.Kp_js) * (q_star - q) + np.asarray(self.p.Kd_js) * (-qd)
+            tau_os = (1.0 - w_sing) * tau_os + w_sing * tau_js
+        else:
+            w_sing = 0.0
+
+        tau_des = np.clip(tau_os, -self.p.tau_clip, self.p.tau_clip)
 
         # ===================== τ → activation/excitation path =====================
         # Geometry/state used by both branches
@@ -450,6 +495,14 @@ class NonlinearMPCController:
         lenvel = geom[:, :2, :]                                   # (1,2,m)
         Rm     = geom[:, 2:2 + self.env.skeleton.dof, :][0]       # (dof,m)
         Fmax_v = get_Fmax_vec(self.env, Rm.shape[1])              # (m,)
+
+        # torque-feasibility scaling vs muscle limits (safety; only if binding)
+        if self.p.enable_singularity_blend:
+            tau_feas = np.sum(np.abs(Rm) * Fmax_v[None, :], axis=1)
+            tau_clip_feas = self.p.tau_scale_safety * tau_feas
+            raw_scale = float(np.clip(np.min(tau_clip_feas / (np.abs(tau_des) + 1e-12)), 0.0, 1.0))
+            if raw_scale < self.p.tau_scale_apply_thresh:
+                tau_des = tau_des * raw_scale
 
         # Passive force & torque (A: passive torque compensation)
         names = self.env.muscle.state_name

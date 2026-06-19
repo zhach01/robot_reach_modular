@@ -40,6 +40,7 @@ Conventions kept identical to your NumPy version:
 from dataclasses import dataclass, field
 from typing import Any, Dict, Tuple
 
+import math
 import torch
 from torch import Tensor
 
@@ -91,6 +92,23 @@ def _zeros_like(x: Tensor) -> Tensor:
 
 def _clip(x: Tensor, lo: float, hi: float) -> Tensor:
     return torch.clamp(x, min=lo, max=hi)
+
+def _blend_weight_from_cond(cond_val: float, lo: float, hi: float) -> float:
+    """0 -> 1 smoothstep blend over [lo, hi] (same security as PD-IF/sliding/OSC)."""
+    if cond_val <= lo:
+        return 0.0
+    if cond_val >= hi:
+        return 1.0
+    a = (cond_val - lo) / (hi - lo)
+    return float(a * a * (3.0 - 2.0 * a))
+
+def _safe_cond(A: Tensor, fallback: float = 1e9) -> float:
+    """Robust condition number of the FULL Jacobian (cond(R) is blind to it)."""
+    try:
+        c = float(torch.linalg.cond(A))
+        return c if math.isfinite(c) else float(fallback)
+    except Exception:
+        return float(fallback)
 
 def _vec2(x: Any, like: Tensor, default=(0.0, 0.0)) -> Tensor:
     """
@@ -225,6 +243,16 @@ class NMPCParams:
     ns_kp_boost: float = 40.0
     ns_kp_max: float = 60.0
     ns_sigma_target: float = 0.10
+
+    # ======= cond(J) singularity security (mirrors numpy NMPC + PD-IF/sliding/OSC) =======
+    enable_singularity_blend: bool = True
+    cond_low: float = 20.0
+    cond_high: float = 80.0
+    elbow_min_rad: float = math.radians(2.0)
+    Kp_js: Any = field(default_factory=lambda: torch.tensor([12.0, 10.0]))
+    Kd_js: Any = field(default_factory=lambda: torch.tensor([2.5, 2.0]))
+    tau_scale_apply_thresh: float = 0.7
+    tau_scale_safety: float = 0.95
 
 
 # ---------------------------------------------------------------------------
@@ -660,8 +688,25 @@ class NonlinearMPCControllerTorch:
         else:
             kp_eff = 0.0
 
-        # total torque and clip
-        tau_des = _clip(tau_task + tau_ns, -self.p.tau_clip, self.p.tau_clip)
+        # total op-space torque
+        tau_os = tau_task + tau_ns
+
+        # --- cond(J) singularity security: blend to joint-space PD fallback ---
+        condJ = _safe_cond(J_xy)
+        if self.p.enable_singularity_blend:
+            w_sing = _blend_weight_from_cond(condJ, self.p.cond_low, self.p.cond_high)
+            q1 = q.reshape(-1)[:n]
+            qd1 = qd.reshape(-1)[:n]
+            q_star = self.qref.reshape(-1)[:n].clone()
+            q_star[1] = torch.clamp(q_star[1], min=float(self.p.elbow_min_rad))  # elbow floor
+            Kp_js = _to_tensor_like(self.p.Kp_js, tau_os).reshape(-1)[:n]
+            Kd_js = _to_tensor_like(self.p.Kd_js, tau_os).reshape(-1)[:n]
+            tau_js = Kp_js * (q_star - q1) + Kd_js * (-qd1)
+            tau_os = (1.0 - w_sing) * tau_os.reshape(-1)[:n] + w_sing * tau_js
+        else:
+            w_sing = 0.0
+
+        tau_des = _clip(tau_os, -self.p.tau_clip, self.p.tau_clip)
 
         # ===================== τ → activation/excitation path =====================
         # Geometry/state
@@ -671,6 +716,14 @@ class NonlinearMPCControllerTorch:
         M_musc = Rm.shape[1]
         Fmax_v = get_Fmax_vec(self.env, M_musc,
                               device=Rm.device, dtype=Rm.dtype)  # (M,)
+
+        # torque-feasibility scaling vs muscle limits (safety; only if binding)
+        if self.p.enable_singularity_blend:
+            tau_feas = torch.sum(torch.abs(Rm) * Fmax_v.unsqueeze(0), dim=1)
+            tau_clip_feas = self.p.tau_scale_safety * tau_feas
+            raw_scale = float(torch.clamp(torch.min(tau_clip_feas / (torch.abs(tau_des) + 1e-12)), 0.0, 1.0))
+            if raw_scale < self.p.tau_scale_apply_thresh:
+                tau_des = tau_des * raw_scale
 
         # Passive term
         names = self.env.muscle.state_name
