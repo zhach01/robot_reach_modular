@@ -178,19 +178,19 @@ class NMPCParams:
     N: int = 30
     dt_mpc: float | None = None  # if None, use arm.dt
 
-    # stage / terminal weights
-    Wx: Any = field(default_factory=lambda: torch.diag(torch.tensor([1500.0, 1500.0])))
-    # Wv synced to numpy (was 20): too little velocity damping vs Wx=1500 caused a
-    # steady-state limit cycle after the C1 dynamics fix -> ~50mm tracking. 70
-    # removes the oscillation, matching the numpy NMPC (~3mm). (the torch port had
-    # kept the stale pre-fix value -- the sole cause of the numpy<->torch gap.)
+    # stage / terminal weights (synced to numpy NMPC, incl. the bandwidth retune:
+    # Wx 1500->4000, Wu 2e-3->2e-4, lam_du 2e-3->0 -- the old penalties
+    # bandwidth-limited the MPC so it under-drove and lagged fast reaches;
+    # center-out 8->6.4mm, random reach preserved. Wv=70 (was 20) fixed the
+    # post-C1 limit cycle and the numpy<->torch gap.)
+    Wx: Any = field(default_factory=lambda: torch.diag(torch.tensor([4000.0, 4000.0])))
     Wv: Any = field(default_factory=lambda: torch.diag(torch.tensor([70.0, 70.0])))
-    Wu: Any = field(default_factory=lambda: torch.diag(torch.tensor([2e-3, 2e-3])))
+    Wu: Any = field(default_factory=lambda: torch.diag(torch.tensor([2e-4, 2e-4])))
     WN: Any = field(default_factory=lambda: torch.diag(torch.tensor([40e4, 40e4, 80e2, 80e2])))
 
     # regularization / limits
     lam_reg: float = 5e-4
-    lam_du: float  = 2e-3
+    lam_du: float  = 0.0           # was 2e-3 (relaxed for bandwidth, matches numpy)
     Fmax: float = 600.0
     tau_clip: float = 600.0
     proj_iters: int = 40           # projected-gradient iters for box-constrained solve (audit H4)

@@ -107,18 +107,22 @@ class NMPCParams:
     dt_mpc: float | None = None  # if None, use arm.dt
 
     # stage / terminal weights
-    Wx: np.ndarray = field(default_factory=lambda: np.diag([1500.0, 1500.0]))
-    # Wv was 20: too little velocity damping relative to Wx=1500, which produced a
-    # steady-state limit cycle once the dynamics were corrected (the C1 fix). Raising
-    # to 70 removes the oscillation: steady-state tracking 7.2mm -> <1mm.
+    # Wx raised 1500->4000 with the input penalties relaxed below: the old
+    # penalties bandwidth-limited the controller so it UNDER-drove (only ~13%
+    # muscle use) and lagged the fast center-out reaches. Retuned config tracks
+    # center-out 8.1->6.4mm (final 6.3->3.0mm, peak 27->15mm) and preserves the
+    # random reach (~3mm). The muscle-activation lag is the remaining floor.
+    Wx: np.ndarray = field(default_factory=lambda: np.diag([4000.0, 4000.0]))
+    # Wv: too little velocity damping vs Wx produced a steady-state limit cycle
+    # after the C1 dynamics fix; 70 removes the oscillation.
     Wv: np.ndarray = field(default_factory=lambda: np.diag([70.0, 70.0]))
-    Wu: np.ndarray = field(default_factory=lambda: np.diag([2e-3, 2e-3]))
+    Wu: np.ndarray = field(default_factory=lambda: np.diag([2e-4, 2e-4]))  # was 2e-3 (bandwidth)
     # terminal: make the goal sticky (x_N≈x*, xdot_N≈0)
     WN: np.ndarray = field(default_factory=lambda: np.diag([40e4, 40e4, 80e2, 80e2]))
 
     # regularization / limits
     lam_reg: float = 5e-4          # small ridge on inputs
-    lam_du: float  = 2e-3          # input slew penalty (0 disables)
+    lam_du: float  = 0.0           # input slew penalty (was 2e-3; relaxed for bandwidth)
     Fmax: float = 600.0            # task-force clip (higher helps fast tracking)
     tau_clip: float = 600.0        # joint torque clip
     proj_iters: int = 40           # projected-gradient iters for box-constrained solve (audit H4)
