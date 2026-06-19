@@ -3,14 +3,14 @@
 """
 Pure-Torch Nonlinear MPC (task-space, full preview on the discrete op-space model).
 
-KNOWN PARITY GAP (pre-existing, not a regression): this torch NMPC reaches the
-target (final ~6mm, reach test passes) but tracks the trajectory ~16x looser than
-the numpy NMPC (RMSE ~51mm vs ~3mm). Verified the ORIGINAL repo's torch NMPC gives
-the identical 50.91mm, so Copy 2 transported it faithfully -- the gap is inherent
-to this diverged torch solver (its `internal_force_scale` path is also broken:
-apply_internal_force_regulation() missing Fmax_vec, hence default 0.0). Closing the
-gap to true parity would require a faithful mirror-port of the numpy NMPC. Canonical
-NMPC for accurate tracking is controller/numpy/nmpc_task.py.
+numpy<->torch PARITY: this torch NMPC now tracks ~2mm (random reach), matching the
+numpy NMPC (~3mm). The earlier ~51mm gap was NOT a solver bug -- the solver mirrors
+numpy -- but three stale parameter DEFAULTS the torch port never synced after the
+numpy NMPC was retuned (the C1 dynamics fix): Wv (20->70), send_excitation
+(False->True), min_activation_override (None->0.005). All three are now numpy-matched
+defaults. (The use_muscles=True branch's internal-force path is still broken --
+apply_internal_force_regulation() missing Fmax_vec -- so internal_force_scale stays
+0.0; the muscles-off path used by the demos is unaffected.)
 
 Torch rewrite of controller/nmpc_task.py:
 - No NumPy in the hot path.
@@ -162,7 +162,11 @@ class NMPCParams:
 
     # stage / terminal weights
     Wx: Any = field(default_factory=lambda: torch.diag(torch.tensor([1500.0, 1500.0])))
-    Wv: Any = field(default_factory=lambda: torch.diag(torch.tensor([20.0, 20.0])))
+    # Wv synced to numpy (was 20): too little velocity damping vs Wx=1500 caused a
+    # steady-state limit cycle after the C1 dynamics fix -> ~50mm tracking. 70
+    # removes the oscillation, matching the numpy NMPC (~3mm). (the torch port had
+    # kept the stale pre-fix value -- the sole cause of the numpy<->torch gap.)
+    Wv: Any = field(default_factory=lambda: torch.diag(torch.tensor([70.0, 70.0])))
     Wu: Any = field(default_factory=lambda: torch.diag(torch.tensor([2e-3, 2e-3])))
     WN: Any = field(default_factory=lambda: torch.diag(torch.tensor([40e4, 40e4, 80e2, 80e2])))
 
@@ -192,11 +196,13 @@ class NMPCParams:
     L2: float | None = None
 
     # muscle / plant output
-    send_excitation: bool = False
+    # send_excitation + min_activation_override synced to numpy NMPC defaults:
+    # together with Wv=70 they close the numpy<->torch tracking gap (51mm -> ~2mm).
+    send_excitation: bool = True
     tau_up: float = 0.030
-    tau_down: float = 0.080
+    tau_down: float = 0.050   # synced to numpy (was 0.080)
     bisect_iters: int = 18
-    min_activation_override: float | None = None
+    min_activation_override: float | None = 0.005
 
     # passive compensation
     compensate_passive: bool = True
