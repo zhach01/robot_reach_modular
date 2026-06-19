@@ -116,7 +116,10 @@ def _vec2(x: Any, like: Tensor, default=(0.0, 0.0)) -> Tensor:
     """
     if x is None:
         return torch.tensor(default, device=like.device, dtype=like.dtype)
-    x = _to_tensor_like(x, like).reshape(-1)
+    x = _to_tensor_like(x, like)
+    if x.ndim >= 2 and x.shape[-1] == 2:
+        x = x.reshape(-1, 2)[-1]            # (N,2) -> LAST row (numpy parity; was first row)
+    x = x.reshape(-1)
     if x.numel() == 1:
         return torch.stack([x[0], torch.zeros((), device=like.device, dtype=like.dtype)])
     return x[:2]
@@ -138,7 +141,7 @@ def _preview_2(N: int, maybe: Any, like: Tensor) -> Tensor:
                 return t
             # if length mismatch: pad/trim
             if t.shape[0] > N:
-                return t[-N:]
+                return t[:N]                 # leading N rows (numpy parity; was trailing N)
             pad = t[-1:].expand(N - t.shape[0], -1)
             return torch.cat([t, pad], dim=0)
         # (B,2) -> use last batch row
@@ -820,7 +823,7 @@ class NonlinearMPCControllerTorch:
 
         # predict & repair for safety (optional)
         af_now = active_force_from_activation(a_des, lenvel, self.env.muscle)
-        F_pred = Fmax_v * af_now
+        F_pred = Fmax_v * (af_now + flpe)   # include passive flpe (numpy default/muscles-off branch)
         F_corr = saturation_repair_tau(-Rm, F_pred, a_des, a_min, 1.0, Fmax_v, tau_des=tau_des)
         if torch.any(torch.abs(F_corr - F_pred) > 1e-9):
             a_des = force_to_activation_bisect(F_corr, lenvel, self.env.muscle, flpe, Fmax_v,
