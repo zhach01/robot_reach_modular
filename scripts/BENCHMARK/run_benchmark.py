@@ -42,16 +42,27 @@ from controller.numpy.osc_controller import OSCController, OSCParams
 # paper protocol constants
 SIGMA_THETA = np.deg2rad(0.25)   # rad, joint-angle sensor noise
 SIGMA_X = 0.6e-3                  # m, endpoint sensor noise
-DELAY_MS = 20.0                  # ms, motor transport delay
+DELAY_MS = 20.0                  # ms, motor transport delay (paper Section X-A)
 DIST_TORQUE = 0.35               # N.m, elbow disturbance
 DIST_DUR = 0.060                 # s, disturbance pulse width
 DIST_EVERY = 5                   # every 5th reach segment
 
+# plant integration (paper Section X-A: RK4 @ 0.1 ms)
+PLANT_INTEGRATION = "rk4"
+PLANT_SUBSTEP_S = 0.1e-3          # 0.1 ms sub-step
+# delay compensation: Smith-style lead predictor on the controller feedback.
+# The 20 ms transport delay caps achievable bandwidth; we feed each controller a
+# model-based estimate of the joint/Cartesian state DELAY_MS ahead (second-order
+# lead from a clean velocity derivative + FK), recovering the lost phase margin.
+DELAY_COMP = True
+DELAY_COMP_FRAC = 1.0            # fraction of the transport delay to predict ahead
+
 
 def build_env(pc):
     muscle = RigidTendonHillMuscle(min_activation=0.02)
+    n_ministeps = max(1, int(round(pc.timestep / PLANT_SUBSTEP_S)))   # -> 0.1 ms sub-steps
     arm = RigidTendonArm26(muscle=muscle, timestep=pc.timestep, damping=pc.damping,
-                           n_ministeps=pc.n_ministeps, integration_method=pc.integration_method)
+                           n_ministeps=n_ministeps, integration_method=PLANT_INTEGRATION)
     env = Environment(effector=arm, max_ep_duration=pc.max_ep_duration, action_noise=0.0,
                       obs_noise=0.0, proprioception_delay=arm.dt, vision_delay=arm.dt, name="Benchmark")
     q0 = np.deg2rad(np.array(pc.q0_deg)); qd0 = np.array(pc.qd0)
@@ -59,18 +70,27 @@ def build_env(pc):
     return env, arm, q0
 
 
+# --- tunable common-operating-point gains (set by the tuning harness) ---
+IMP_KP = 1600.0        # impedance task stiffness
+PAS_K0 = 1600.0        # passivity task stiffness (common operating point with impedance)
+PAS_ZETA = 1.0
+SMC_LAMBDA = 22.0      # sliding surface slope
+SMC_KSW = 12.0          # sliding switching gain (-> robustness + effort)
+SMC_PHI = 0.003        # sliding boundary layer
+
+
 def make_controller(name, env, arm, cfg):
     toggles, gains, num, ifc = cfg
     if name == "Impedance (PD/IF)":
         return PDIFController(env, arm, PDIFParams(
-            Kp_task=np.array([1600.0, 1600.0]), damping_ratio=0.7, Kff=1.0, use_critical_damping=True,
+            Kp_task=np.array([IMP_KP, IMP_KP]), damping_ratio=0.7, Kff=1.0, use_critical_damping=True,
             enable_inertia_comp=toggles.enable_inertia_comp, enable_gravity_comp=toggles.enable_gravity_comp,
             enable_coriolis_comp=toggles.enable_velocity_comp, enable_nullspace=True, Kp_null=20.0, Kd_null=5.0,
             eps=num.eps, lam_os_max=float(getattr(num, "lam_os_max", 200.0)), sigma_thresh=num.sigma_thresh,
             gate_pow=num.gate_pow, bisect_iters=ifc.bisect_iters, enable_internal_force=False, cocon_level=0.0))
     if name == "Passivity":
         return EnergyTankController(env, arm, EnergyTankParams(
-            D0=np.diag([25.0, 25.0]), K0=np.diag([4000.0, 4000.0]), Kff=2.0, zeta=1.0, strict_passivity=False,
+            D0=np.diag([25.0, 25.0]), K0=np.diag([PAS_K0, PAS_K0]), Kff=2.0, zeta=PAS_ZETA, strict_passivity=False,
             KI=np.array([0.0, 0.0]), Imax=np.array([0.0, 0.0]), eps=num.eps, lam_os_max=num.lam_os_max,
             sigma_thresh=num.sigma_thresh, gate_pow=num.gate_pow, enable_inertia_comp=toggles.enable_inertia_comp,
             enable_gravity_comp=toggles.enable_gravity_comp, enable_joint_damping=toggles.enable_joint_damping,
@@ -78,7 +98,7 @@ def make_controller(name, env, arm, cfg):
             linesearch_eps=num.linesearch_eps, linesearch_safety=num.linesearch_safety, E0=0.15, Emin=1e-4, Emax=1.0))
     if name == "Sliding-mode":
         return SlidingModeController(env, arm, SlidingModeParams(
-            lambda_surf=np.array([26.0, 26.0]), K_switch=np.array([4.0, 4.0]), phi=np.array([0.004, 0.004]), Kff_x=1.0,
+            lambda_surf=np.array([SMC_LAMBDA, SMC_LAMBDA]), K_switch=np.array([SMC_KSW, SMC_KSW]), phi=np.array([SMC_PHI, SMC_PHI]), Kff_x=1.0,
             enable_gravity_comp=toggles.enable_gravity_comp, enable_velocity_comp=toggles.enable_velocity_comp,
             enable_inertia_comp=toggles.enable_inertia_comp, lambda_ns=0.0, k_manip=0.0, eps=num.eps,
             lam_os_max=num.lam_os_max, sigma_thresh=num.sigma_thresh, gate_pow=num.gate_pow, bisect_iters=ifc.bisect_iters,
@@ -127,6 +147,8 @@ def run_one(env, arm, ctrl, traj, task, steps, q0, info, perturb, rng):
     load = info.get("load", None)
     tgrid = getattr(traj, "tgrid", None)
     delay_steps = int(round((DELAY_MS / 1000.0) / dt)) if perturb else 0
+    pred_h = (delay_steps * dt) * DELAY_COMP_FRAC if (perturb and DELAY_COMP) else 0.0
+    qd_prev = None
     abuf = []
     eff = env.effector
 
@@ -136,14 +158,24 @@ def run_one(env, arm, ctrl, traj, task, steps, q0, info, perturb, rng):
         t_now = k * dt
         x_d, xd_d, xdd_d = traj.sample(t_now)
 
-        # --- sensor noise on the controller feedback (perturb -> compute -> restore) ---
+        # --- delay compensation + sensor noise on the controller feedback ---
+        # (perturb -> predict state at t+delay -> add noise -> compute -> restore true state)
         if perturb:
             q_true = eff.states["joint"].copy()
             x_true = eff.states["cartesian"].copy()
-            eff.states["joint"] = q_true.copy()
-            eff.states["joint"][:, :2] += rng.normal(0.0, SIGMA_THETA, size=q_true[:, :2].shape)
-            eff.states["cartesian"] = x_true.copy()
-            eff.states["cartesian"][:, :2] += rng.normal(0.0, SIGMA_X, size=x_true[:, :2].shape)
+            q = q_true[0, :2]; qd = q_true[0, 2:]
+            qdd = np.zeros(2) if qd_prev is None else (qd - qd_prev) / dt
+            qd_prev = qd.copy()
+            # second-order lead predictor to the moment the command actually lands
+            q_p = q + qd * pred_h + 0.5 * qdd * pred_h * pred_h
+            qd_p = qd + qdd * pred_h
+            jp = np.concatenate([q_p, qd_p])[None, :]
+            cp = np.asarray(eff.joint2cartesian(joint_state=jp)).copy()
+            jp = jp.copy()
+            jp[:, :2] += rng.normal(0.0, SIGMA_THETA, size=(1, 2))   # sensor noise on the measurement
+            cp[:, :2] += rng.normal(0.0, SIGMA_X, size=(1, 2))
+            eff.states["joint"] = jp
+            eff.states["cartesian"] = cp
             diag = ctrl.compute(x_d, xd_d, xdd_d)
             eff.states["joint"] = q_true            # restore true state for the plant
             eff.states["cartesian"] = x_true
