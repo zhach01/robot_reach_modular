@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-TRUE MotorNet Controller (Torch)
+TRUE MotorNet Controller (Torch) -- CANONICAL torch MotorNet (bake-off winner).
+
+Bake-off vs motornet_true.py (both BPTT through the REAL plant): this GRU policy
+reached 0.60cm final endpoint error on the real plant vs 3.07cm for motornet_true
+(archived). numpy counterpart = controller/numpy/motornet_fixed.py.
+
+NOTE: this is an EPISODIC goal-reaching policy, not a continuous tracker. It is
+trained to reach a goal over `trial_duration` (~0.6s) from a fixed start and is
+NOT trained to hold position afterward -- run it for one trial via its native
+rollout / the goal-reach demo (scripts/MOTORNET/main_goal_reach_motornet_torch.py),
+not for a full 5s tracking episode. Retrain the checkpoint with
+`python -m scripts.MOTORNET.train_motornet_torch` (saved policy is gitignored).
 
 Follows the same patterns as sliding_mode_torch.py and hybrid_bc_a_torch.py:
 - Uses EnvironmentTorch + RigidTendonArm26

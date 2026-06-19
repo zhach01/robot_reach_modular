@@ -108,6 +108,25 @@ def test_anfis_torch_tracks():
     assert err < 0.01, f"ANFIS failed to track: {err*1000:.1f} mm"
 
 
+def test_motornet_controller_torch_smoke():
+    # canonical torch MotorNet (bake-off winner). It is an EPISODIC learned
+    # policy whose accuracy needs a trained (gitignored) checkpoint, so the CI
+    # test only guards the controller API contract: compute() must return a
+    # finite muscle-excitation vector in [0,1] of the right shape.
+    from controller.torch.motornet_controller import MotorNetController, MotorNetParams
+    env, arm, pc = _build_env()
+    ctrl = MotorNetController(env, arm, MotorNetParams(device="cpu"))
+    q0 = torch.deg2rad(torch.tensor(pc.q0_deg, dtype=torch.float64))
+    ctrl.reset(q0)
+    target = env.states["fingertip"][0, :2] + torch.tensor([0.05, 0.0], dtype=torch.float64)
+    ctrl.set_goal(target)
+    out = ctrl.compute(target, torch.zeros(2), torch.zeros(2))
+    a = out["act"]
+    assert a.shape[-1] == arm.n_muscles, f"bad action dim: {tuple(a.shape)}"
+    assert torch.isfinite(a).all(), "non-finite activations"
+    assert float(a.min()) >= 0.0 and float(a.max()) <= 1.0001, "activations out of [0,1]"
+
+
 def test_synergy_torch_tracks():
     # canonical (full) SynergyController, torch port: modules + modulation +
     # residual correction must drive the fingertip to the target with the
