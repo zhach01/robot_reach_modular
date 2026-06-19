@@ -3,6 +3,15 @@
 """
 Pure-Torch Nonlinear MPC (task-space, full preview on the discrete op-space model).
 
+KNOWN PARITY GAP (pre-existing, not a regression): this torch NMPC reaches the
+target (final ~6mm, reach test passes) but tracks the trajectory ~16x looser than
+the numpy NMPC (RMSE ~51mm vs ~3mm). Verified the ORIGINAL repo's torch NMPC gives
+the identical 50.91mm, so Copy 2 transported it faithfully -- the gap is inherent
+to this diverged torch solver (its `internal_force_scale` path is also broken:
+apply_internal_force_regulation() missing Fmax_vec, hence default 0.0). Closing the
+gap to true parity would require a faithful mirror-port of the numpy NMPC. Canonical
+NMPC for accurate tracking is controller/numpy/nmpc_task.py.
+
 Torch rewrite of controller/nmpc_task.py:
 - No NumPy in the hot path.
 - HTM kinematics/dynamics:
@@ -338,8 +347,10 @@ class NonlinearMPCControllerTorch:
         k1, k2 = L1 + L2 * c2, L2 * s2
         th1_up = torch.atan2(torch.tensor(py), torch.tensor(px)) - torch.atan2(torch.tensor(+k2), torch.tensor(k1))
         th1_dn = torch.atan2(torch.tensor(py), torch.tensor(px)) - torch.atan2(torch.tensor(-k2), torch.tensor(k1))
-        up = torch.stack([th1_up, th2_up])
-        dn = torch.stack([th1_dn, th2_dn])
+        # th* are built from torch.tensor(scalar) -> CPU; move onto q_curr's
+        # device/dtype so the IK works when the env runs on CUDA (not just CPU).
+        up = torch.stack([th1_up, th2_up]).to(device=q_curr.device, dtype=q_curr.dtype)
+        dn = torch.stack([th1_dn, th2_dn]).to(device=q_curr.device, dtype=q_curr.dtype)
 
         if   self.p.elbow_pref == "up":   qref = up
         elif self.p.elbow_pref == "down": qref = dn
