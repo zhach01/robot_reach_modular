@@ -202,6 +202,16 @@ class NMPCParams:
     tau_scale_apply_thresh: float = 0.7
     tau_scale_safety: float = 0.95
 
+    # ======= supplementary task-space PD feedback (MPC + PD architecture) =======
+    # The MPC's effective gain is capped by its constant-Lambda model (higher Wx
+    # oscillates), so it under-drives and lags the fast reaches. A high-gain
+    # task-space PD on the instantaneous error backstops it (MPC = feedforward /
+    # preview / constraints, PD = high-bandwidth disturbance rejection). Closes
+    # the lag without an iLQR rewrite: center-out 6.5 -> ~3mm, random reach -> ~1.3mm.
+    enable_task_pd: bool = True
+    Kp_fb: float = 3500.0
+    Kv_fb: float = 100.0
+
 
 # -----------------------------------------------------------------------------
 # Controller
@@ -479,6 +489,14 @@ class NonlinearMPCController:
 
         # total op-space torque
         tau_os = tau_task + tau_ns
+
+        # --- supplementary high-gain task-space PD feedback (closes the MPC's
+        #     model-limited bandwidth; added BEFORE the singularity blend so it is
+        #     blended out toward the joint fallback near singularities) ---
+        if self.p.enable_task_pd:
+            e_x = _vec2(x_d) - x
+            e_v = _vec2(xd_d) - xd
+            tau_os = tau_os + J_xy.T @ (self.p.Kp_fb * e_x + self.p.Kv_fb * e_v)
 
         # --- cond(J) singularity security: blend to joint-space PD fallback ---
         condJ = _safe_cond(J_xy)

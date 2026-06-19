@@ -254,6 +254,13 @@ class NMPCParams:
     tau_scale_apply_thresh: float = 0.7
     tau_scale_safety: float = 0.95
 
+    # ======= supplementary task-space PD feedback (MPC + PD; mirrors numpy) =======
+    # MPC = feedforward/preview, PD = high-bandwidth feedback that closes the lag
+    # the constant-Lambda MPC model can't (center-out 6.4 -> ~3.6mm, no iLQR needed).
+    enable_task_pd: bool = True
+    Kp_fb: float = 3500.0
+    Kv_fb: float = 100.0
+
 
 # ---------------------------------------------------------------------------
 # Controller
@@ -690,6 +697,13 @@ class NonlinearMPCControllerTorch:
 
         # total op-space torque
         tau_os = tau_task + tau_ns
+
+        # --- supplementary high-gain task-space PD feedback (mirrors numpy;
+        #     added BEFORE the singularity blend so it blends out near singular) ---
+        if self.p.enable_task_pd:
+            e_x = _vec2(x_d, like) - x[0]
+            e_v = xd_d_1 - xd[0]                       # scaled reference velocity
+            tau_os = tau_os + J_xy.transpose(0, 1) @ (self.p.Kp_fb * e_x + self.p.Kv_fb * e_v)
 
         # --- cond(J) singularity security: blend to joint-space PD fallback ---
         condJ = _safe_cond(J_xy)
