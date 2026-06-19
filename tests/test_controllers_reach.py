@@ -127,6 +127,25 @@ def test_motornet_controller_torch_smoke():
     assert float(a.min()) >= 0.0 and float(a.max()) <= 1.0001, "activations out of [0,1]"
 
 
+def test_bc_a_torch_smoke():
+    # canonical Hybrid/BC = behavior-cloned activation policy (torch). Accuracy
+    # needs a trained (gitignored) checkpoint, so the CI test guards the API
+    # contract: compute() returns finite muscle activations in [0,1].
+    from controller.torch.hybrid_bc_a import (
+        RLPolicy, RLPolicyParams, RLControllerATorch, RLControllerAParams)
+    env, arm, pc = _build_env()
+    m = int(env.states["geometry"].shape[2])
+    pi = RLPolicy(RLPolicyParams(obs_dim=14 + 5 * m, act_dim=m, device="cpu"))
+    ctrl = RLControllerATorch(env, arm, pi, RLControllerAParams())
+    ctrl.reset(torch.deg2rad(torch.tensor(pc.q0_deg, dtype=torch.float64)))
+    target = env.states["fingertip"][0, :2] + torch.tensor([0.05, 0.0], dtype=torch.float64)
+    out = ctrl.compute(target, torch.zeros(2), torch.zeros(2))
+    a = out["act"]
+    assert a.shape[-1] == arm.n_muscles, f"bad action dim: {tuple(a.shape)}"
+    assert torch.isfinite(a).all(), "non-finite activations"
+    assert float(a.min()) >= 0.0 and float(a.max()) <= 1.0001, "activations out of [0,1]"
+
+
 def test_synergy_torch_tracks():
     # canonical (full) SynergyController, torch port: modules + modulation +
     # residual correction must drive the fingertip to the target with the

@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-# controller/hybrid_bc_a.py
+# controller/numpy/hybrid_bc_a.py
+# CANONICAL Hybrid/BC controller (bake-off winner over hybrid_mpc_rl torque-BC and
+# the faulty mpc_rl_hybrid DAgger, both archived). Behavior-cloning the IMPROVED
+# NMPC teacher (regenerate dataset -> retrain) took it from 10.2mm to ~3.2mm.
 """
 Behavior-cloned activation policy (a-policy).
 
