@@ -29,6 +29,14 @@ from model_lib.numpy.environment import Environment
 from model_lib.numpy.muscles import RigidTendonHillMuscle
 from model_lib.numpy.effector import RigidTendonArm26
 
+# Reproducibility: disable the dynamics memoization cache. Its keys round joint
+# angles to 4 decimals, so a warm/pre-populated cache makes results depend on run
+# order and on what a prior run left behind. Computing exactly (cache off) makes the
+# benchmark deterministic and order-independent -- this is how paper Table XIV is
+# generated. (RTF drops accordingly; RTF is reported as a host-specific figure only.)
+import model_lib.numpy.skeleton as _skeleton
+_skeleton.USE_CACHE = False
+
 from trajectory.numpy.minjerk import MinJerkLinearTrajectory, MinJerkParams
 from trajectory.numpy.lissajous import LissajousTrajectory, LissajousParams
 from tasks.numpy.base_task import CenterOutTask
