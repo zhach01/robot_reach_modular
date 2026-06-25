@@ -32,18 +32,38 @@ for lab in PAIRS:
     b = np.mean([d["r_base"][lab] for d in recs]); i = np.mean([d["r_imp"][lab] for d in recs])
     print(f"  {lab:18s}: {b:+.2f} -> {i:+.2f}")
 
-x = np.arange(len(kept)); w = 0.38
-fig, ax = plt.subplots(figsize=(9.5, 4.3))
-ax.bar(x - w/2, sub_base, w, color="0.6", label="Baseline (effort-min)")
-ax.bar(x + w/2, sub_imp, w, color="#c0392b", label="Decel-gated co-contraction")
-ax.axhline(sub_base.mean(), color="0.4", ls="--", lw=1)
-ax.axhline(sub_imp.mean(), color="#c0392b", ls="--", lw=1)
-ax.set_xticks(x); ax.set_xticklabels(kept, fontsize=9)
-ax.set_ylabel("overall model-EMG correlation $r$\n(mean over four muscle pairs)")
-ax.set_title(f"Cross-subject generalisation (Lucchetti 2025, n={len(kept)}): "
-             f"mean $r$ {sub_base.mean():.2f}$\\to${sub_imp.mean():.2f}, "
-             f"{n_imp}/{len(kept)} subjects improve", fontsize=11)
-ax.grid(axis="y", ls="--", alpha=.3); ax.legend(fontsize=9, loc="upper right")
+# per-muscle means +/- SD across subjects (Left panel)
+mb_m = np.array([np.mean([d["r_base"][lab] for d in recs]) for lab in PAIRS])
+mb_s = np.array([np.std ([d["r_base"][lab] for d in recs]) for lab in PAIRS])
+mi_m = np.array([np.mean([d["r_imp"][lab]  for d in recs]) for lab in PAIRS])
+mi_s = np.array([np.std ([d["r_imp"][lab]  for d in recs]) for lab in PAIRS])
+
+w = 0.38
+fig, (axL, axR) = plt.subplots(1, 2, figsize=(12.6, 4.3), gridspec_kw={"width_ratios": [1, 1.45]})
+
+# Left: per-muscle, baseline vs decel-gated (mean +/- SD over subjects)
+xm = np.arange(len(PAIRS))
+axL.bar(xm - w/2, mb_m, w, yerr=mb_s, capsize=3, color="0.6", label="Baseline (effort-min)")
+axL.bar(xm + w/2, mi_m, w, yerr=mi_s, capsize=3, color="#c0392b", label="Decel-gated co-contraction")
+axL.axhline(0, color="k", lw=0.6)
+axL.set_xticks(xm); axL.set_xticklabels(["Shoulder\nflexor", "Shoulder\nextensor", "Biceps", "Triceps"], fontsize=9)
+axL.set_ylabel("model-EMG correlation $r$ (mean $\\pm$ SD)")
+axL.set_title(f"Per-muscle (n={len(kept)} subjects)", fontsize=11)
+axL.grid(axis="y", ls="--", alpha=.3); axL.legend(fontsize=8, loc="upper left")
+
+# Right: per-subject overall correlation
+x = np.arange(len(kept))
+axR.bar(x - w/2, sub_base, w, color="0.6", label="Baseline (effort-min)")
+axR.bar(x + w/2, sub_imp, w, color="#c0392b", label="Decel-gated co-contraction")
+axR.axhline(sub_base.mean(), color="0.4", ls="--", lw=1)
+axR.axhline(sub_imp.mean(), color="#c0392b", ls="--", lw=1)
+axR.set_xticks(x); axR.set_xticklabels(kept, fontsize=9, rotation=45)
+axR.set_ylabel("overall correlation $r$ (mean over 4 muscles)")
+axR.set_title(f"Per-subject: mean $r$ {sub_base.mean():.2f}$\\to${sub_imp.mean():.2f}, "
+              f"{n_imp}/{len(kept)} improve", fontsize=11)
+axR.grid(axis="y", ls="--", alpha=.3); axR.legend(fontsize=8, loc="upper right")
+
+fig.suptitle("Cross-subject generalisation (Lucchetti 2025)", fontsize=12, y=1.02)
 fig.tight_layout()
 fig.savefig(OUT, bbox_inches="tight")
 fig.savefig(f"{B}/kinarm_dataset/emg_crosssubject.pdf", bbox_inches="tight")

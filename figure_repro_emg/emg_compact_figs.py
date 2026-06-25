@@ -4,6 +4,7 @@ import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
 from model_lib.numpy.environment import Environment
 from model_lib.numpy.muscles import RigidTendonHillMuscle
 from model_lib.numpy.effector import RigidTendonArm26
+import model_lib.numpy.skeleton as _sk; _sk.USE_CACHE = False  # deterministic, reproducible (no rounded htm cache)
 from controller.numpy.pd_if_controller import PDIFController, PDIFParams
 from sim.numpy.simulator import TargetReachSimulator
 B="/home/jdiab/Desktop/PAPER/enhanced_paper_corrected (Copy)"

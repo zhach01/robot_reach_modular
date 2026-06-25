@@ -9,6 +9,7 @@ from scipy.signal import savgol_filter
 from model_lib.numpy.environment import Environment
 from model_lib.numpy.muscles import RigidTendonHillMuscle
 from model_lib.numpy.effector import RigidTendonArm26
+import model_lib.numpy.skeleton as _sk; _sk.USE_CACHE = False  # deterministic, reproducible (no rounded htm cache)
 from sim.numpy.simulator import TargetReachSimulator
 from controller.numpy.pd_if_controller import PDIFController, PDIFParams
 from controller.numpy.energy_tank_controller import EnergyTankController, EnergyTankParams
