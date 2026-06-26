@@ -15,8 +15,8 @@ from .lhc_analysis import run_sensitivity_analysis, DEFAULT_PARAMS
 
 # symbol labels for the figure
 SYMBOL = {
-    "a1": r"$a_1$ (sh. flexor lever)", "Fmax_DEL": r"$F_{\max,1}$ (deltoid)",
-    "Fmax_BIC": r"$F_{\max,5}$ (biceps)", "Fmax_PEC": r"$F_{\max,2}$ (pectoralis)",
+    "a1": r"$a_1$ (sh. flexor lever)", "Fmax_DEL": r"$F_{\max,2}$ (deltoid)",
+    "Fmax_BIC": r"$F_{\max,5}$ (biceps)", "Fmax_PEC": r"$F_{\max,1}$ (pectoralis)",
     "a61": r"$a_{61}$ (tri-long lever)", "Fmax_TRI_long": r"$F_{\max,6}$ (tri-long)",
     "Fmax_BRA": r"$F_{\max,3}$ (brachialis)", "Fmax_TRI_lat": r"$F_{\max,4}$ (tri-lat)",
     "L1": r"$L_1$", "m2": r"$m_2$", "Lg2": r"$L_{g2}$", "I1": r"$I_1$",

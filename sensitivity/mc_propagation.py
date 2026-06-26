@@ -47,7 +47,7 @@ def propagate(n_samples=10000, seed=42, specs=DEFAULT_PARAMS, save_csv=True, ver
     # --- endpoint deviation vs nominal (vectorized FK) ---
     L1, L2 = P("L1", 0.27), P("L2", 0.26)
     x, y = forward_kinematics(L1, L2)
-    x0, y0 = forward_kinematics(np.array([0.27]), np.array([0.26]))
+    x0, y0 = forward_kinematics(np.array([0.309]), np.array([0.333]))
     endpoint_dev = np.sqrt((x - x0) ** 2 + (y - y0) ** 2)    # m
 
     # --- activation energy E = sum a_i^2 from a static NNLS allocation ---
