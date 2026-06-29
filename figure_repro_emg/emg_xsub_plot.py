@@ -39,7 +39,7 @@ mi_m = np.array([np.mean([d["r_imp"][lab]  for d in recs]) for lab in PAIRS])
 mi_s = np.array([np.std ([d["r_imp"][lab]  for d in recs]) for lab in PAIRS])
 
 w = 0.38
-fig, (axL, axR) = plt.subplots(1, 2, figsize=(12.6, 4.3), gridspec_kw={"width_ratios": [1, 1.45]})
+fig, (axL, axR) = plt.subplots(1, 2, figsize=(12.6, 3.6), gridspec_kw={"width_ratios": [1, 1.45]})
 
 # Left: per-muscle, baseline vs decel-gated (mean +/- SD over subjects)
 xm = np.arange(len(PAIRS))
@@ -63,7 +63,6 @@ axR.set_title(f"Per-subject: mean $r$ {sub_base.mean():.2f}$\\to${sub_imp.mean()
               f"{n_imp}/{len(kept)} improve", fontsize=11)
 axR.grid(axis="y", ls="--", alpha=.3); axR.legend(fontsize=8, loc="upper right")
 
-fig.suptitle("Cross-subject generalisation (Lucchetti 2025)", fontsize=12, y=1.02)
 fig.tight_layout()
 fig.savefig(OUT, bbox_inches="tight")
 fig.savefig(f"{B}/kinarm_dataset/emg_crosssubject.pdf", bbox_inches="tight")

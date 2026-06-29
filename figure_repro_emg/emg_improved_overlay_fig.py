@@ -105,7 +105,7 @@ print("config    | " + "  ".join(f"{l[:8]:>8s}" for l in labels) + " | mean")
 print("baseline  | " + "  ".join(f"{r_b[l]:+8.2f}" for l in labels) + f" | {np.mean([r_b[l] for l in labels]):+.2f}")
 print("improved  | " + "  ".join(f"{r_i[l]:+8.2f}" for l in labels) + f" | {np.mean([r_i[l] for l in labels]):+.2f}")
 
-fig, axes = plt.subplots(1, 4, figsize=(18, 4.2))
+fig, axes = plt.subplots(1, 4, figsize=(18, 3.5))
 for ax, lab in zip(axes, labels):
     ax.plot(ph * 100, me_i[lab], color="black", lw=3, label="Measured EMG")
     ax.plot(ph * 100, mm_i[lab], color="red", lw=2, ls="-", label="Improved model")

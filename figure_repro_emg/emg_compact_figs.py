@@ -41,20 +41,20 @@ for tk in D:
             mo=np.interp(ph,tm,act[:,col]);mo/=(mo.max() or 1);me=np.interp(ph,te,envf(E[row][a*EF//KF:b*EF//KF]));me/=(me.max() or 1)
             M[lab].append(mo);E_[lab].append(me)
 # FIG 1: emg_diagnostic = single representative reach (raw, noisy) 2x2
-fig,ax=plt.subplots(2,2,figsize=(6.6,4.6))
+fig,ax=plt.subplots(2,2,figsize=(6.9,3.4))
 for a,(c,r,lab) in zip(ax.ravel(),PAIRS):
     a.plot(ph*100,E_[lab][0],"k",lw=1.6,label="EMG (1 reach)");a.plot(ph*100,M[lab][0],"r--",lw=1.6,label="Model (1 reach)")
     a.set_title(lab,fontsize=9);a.grid(ls="--",alpha=.3);a.set_ylim(-0.05,1.15)
 ax[0,0].legend(fontsize=7);[a.set_xlabel("reach %") for a in ax[1,:]];[a.set_ylabel("norm. act.") for a in ax[:,0]]
-fig.suptitle("Single-reach overlay: model burst vs sustained, co-contracted EMG",fontsize=9);fig.tight_layout()
+fig.tight_layout()
 fig.savefig(f"{B}/overleaf_model_based/figures/emg_diagnostic.png",dpi=130,bbox_inches="tight");fig.savefig(f"{B}/kinarm_dataset/emg_diagnostic.png",dpi=130,bbox_inches="tight")
 # FIG 2: emg_meanprofile = mean over reaches + r, 2x2
-fig,ax=plt.subplots(2,2,figsize=(6.6,4.6))
+fig,ax=plt.subplots(2,2,figsize=(6.9,3.4))
 for a,(c,r,lab) in zip(ax.ravel(),PAIRS):
     Mm=np.array(M[lab]).mean(0);Em=np.array(E_[lab]).mean(0);rr=np.corrcoef(Mm,Em)[0,1]
     a.plot(ph*100,Em,"k",lw=2,label="EMG (mean)");a.plot(ph*100,Mm,"r--",lw=2,label="Model (mean)")
     a.set_title(f"{lab}  r={rr:+.2f}",fontsize=9);a.grid(ls="--",alpha=.3);a.set_ylim(-0.05,1.15)
 ax[0,0].legend(fontsize=7);[a.set_xlabel("reach %") for a in ax[1,:]];[a.set_ylabel("norm. act.") for a in ax[:,0]]
-fig.suptitle("Reach-averaged profiles: agonist reproduced, antagonist not",fontsize=9);fig.tight_layout()
+fig.tight_layout()
 fig.savefig(f"{B}/overleaf_model_based/figures/emg_meanprofile.png",dpi=130,bbox_inches="tight");fig.savefig(f"{B}/kinarm_dataset/emg_meanprofile.png",dpi=130,bbox_inches="tight")
 print("wrote compact emg_diagnostic.png and emg_meanprofile.png (2x2)")
