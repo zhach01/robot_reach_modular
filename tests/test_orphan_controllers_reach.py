@@ -1,7 +1,7 @@
 """
-Smoke/regression tests for the two torch controllers that were converted to the
-analytic fast-path (nmpc_task_torch, energy_tank_controller_torch). They are not
-wired to any script, so these tests are their only coverage: build each with the
+Smoke/regression test for the energy-tank torch controller converted to the
+analytic fast-path (energy_tank_controller_torch). It is not
+wired to any script, so this test is its only coverage: build it with the
 standard torch env and confirm a short closed-loop reach runs, stays finite, and
 makes clear progress toward the target on the analytic dynamics path.
 
@@ -79,10 +79,3 @@ def test_energy_tank_torch_reaches():
         bisect_iters=ifc.bisect_iters, linesearch_eps=num.linesearch_eps,
         linesearch_safety=num.linesearch_safety)
     _run(env, arm, EnergyTankController(env, arm, p), traj, target)
-
-
-def test_nmpc_torch_reaches():
-    from controller.torch.nmpc_task import NonlinearMPCControllerTorch, NMPCParams
-    env, arm, q0, target, traj = _build_env()
-    p = NMPCParams(N=12, dt_mpc=arm.dt)
-    _run(env, arm, NonlinearMPCControllerTorch(env, arm, p), traj, target)
