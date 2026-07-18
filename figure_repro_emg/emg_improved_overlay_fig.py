@@ -105,19 +105,22 @@ print("config    | " + "  ".join(f"{l[:8]:>8s}" for l in labels) + " | mean")
 print("baseline  | " + "  ".join(f"{r_b[l]:+8.2f}" for l in labels) + f" | {np.mean([r_b[l] for l in labels]):+.2f}")
 print("improved  | " + "  ".join(f"{r_i[l]:+8.2f}" for l in labels) + f" | {np.mean([r_i[l] for l in labels]):+.2f}")
 
-fig, axes = plt.subplots(1, 4, figsize=(18, 3.5))
-for ax, lab in zip(axes, labels):
-    ax.plot(ph * 100, me_i[lab], color="black", lw=3, label="Measured EMG")
-    ax.plot(ph * 100, mm_i[lab], color="red", lw=2, ls="-", label="Improved model")
-    ax.plot(ph * 100, mm_b[lab], color="gray", lw=2, ls="--", label="Baseline model")
-    ax.set_title(f"{lab}\nr: base={r_b[lab]:+.2f} -> improved={r_i[lab]:+.2f}", fontsize=10)
-    ax.set_xlabel("reach %"); ax.set_ylabel("normalised activation")
-axes[0].legend(fontsize=8, loc="best")
-fig.suptitle("Deceleration-gated co-contraction improves model-EMG agreement (HS01, mean over reaches)",
-             fontsize=13)
-fig.tight_layout(rect=[0, 0, 1, 0.95])
-fig.savefig(OUT, dpi=120, bbox_inches="tight")
-fig.savefig(f"{B}/overleaf_model_based/figures/emg_improved_overlay.png", dpi=120, bbox_inches="tight")
+# Single-column layout: the four muscle panels reflow into a 2x2 grid.
+fig, axes = plt.subplots(2, 2, figsize=(5.8, 5.0))
+for i, (ax, lab) in enumerate(zip(axes.flat, labels)):
+    ax.plot(ph * 100, me_i[lab], color="black", lw=2.2, label="Measured EMG")
+    ax.plot(ph * 100, mm_i[lab], color="red", lw=1.8, ls="-", label="Improved model")
+    ax.plot(ph * 100, mm_b[lab], color="gray", lw=1.8, ls="--", label="Baseline model")
+    ax.set_title(f"{lab}  ($r$ {r_b[lab]:+.2f}$\\to${r_i[lab]:+.2f})", fontsize=9)
+    ax.tick_params(labelsize=8)
+    if i // 2 == 1:            # bottom row only
+        ax.set_xlabel("reach %", fontsize=9)
+    if i % 2 == 0:             # left column only
+        ax.set_ylabel("norm. activation", fontsize=9)
+axes.flat[0].legend(fontsize=7, loc="best")
+fig.tight_layout()
+fig.savefig(OUT, dpi=200, bbox_inches="tight")
+fig.savefig(f"{B}/overleaf_model_based/figures/emg_improved_overlay.png", dpi=200, bbox_inches="tight")
 print("WROTE", OUT, "and overleaf figures/")
 print(f"baseline mean r = {np.mean([r_b[l] for l in labels]):+.3f}")
 print(f"improved mean r = {np.mean([r_i[l] for l in labels]):+.3f}")

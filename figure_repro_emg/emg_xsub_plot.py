@@ -39,29 +39,30 @@ mi_m = np.array([np.mean([d["r_imp"][lab]  for d in recs]) for lab in PAIRS])
 mi_s = np.array([np.std ([d["r_imp"][lab]  for d in recs]) for lab in PAIRS])
 
 w = 0.38
-fig, (axL, axR) = plt.subplots(1, 2, figsize=(12.6, 3.6), gridspec_kw={"width_ratios": [1, 1.45]})
+# Single-column layout: the two panels are stacked vertically (2 rows x 1 col).
+fig, (axT, axB) = plt.subplots(2, 1, figsize=(5.0, 6.0))
 
-# Left: per-muscle, baseline vs decel-gated (mean +/- SD over subjects)
+# Top: per-muscle, baseline vs decel-gated (mean +/- SD over subjects)
 xm = np.arange(len(PAIRS))
-axL.bar(xm - w/2, mb_m, w, yerr=mb_s, capsize=3, color="0.6", label="Baseline (effort-min)")
-axL.bar(xm + w/2, mi_m, w, yerr=mi_s, capsize=3, color="#c0392b", label="Decel-gated co-contraction")
-axL.axhline(0, color="k", lw=0.6)
-axL.set_xticks(xm); axL.set_xticklabels(["Shoulder\nflexor", "Shoulder\nextensor", "Biceps", "Triceps"], fontsize=9)
-axL.set_ylabel("model-EMG correlation $r$ (mean $\\pm$ SD)")
-axL.set_title(f"Per-muscle (n={len(kept)} subjects)", fontsize=11)
-axL.grid(axis="y", ls="--", alpha=.3); axL.legend(fontsize=8, loc="upper left")
+axT.bar(xm - w/2, mb_m, w, yerr=mb_s, capsize=3, color="0.6", label="Baseline (effort-min)")
+axT.bar(xm + w/2, mi_m, w, yerr=mi_s, capsize=3, color="#c0392b", label="Decel-gated co-contraction")
+axT.axhline(0, color="k", lw=0.6)
+axT.set_xticks(xm); axT.set_xticklabels(["Shoulder\nflexor", "Shoulder\nextensor", "Biceps", "Triceps"], fontsize=8)
+axT.set_ylabel("model-EMG $r$ (mean $\\pm$ SD)", fontsize=9)
+axT.set_title(f"(a) Per-muscle (n={len(kept)} subjects)", fontsize=10)
+axT.grid(axis="y", ls="--", alpha=.3); axT.legend(fontsize=7.5, loc="upper left")
 
-# Right: per-subject overall correlation
+# Bottom: per-subject overall correlation
 x = np.arange(len(kept))
-axR.bar(x - w/2, sub_base, w, color="0.6", label="Baseline (effort-min)")
-axR.bar(x + w/2, sub_imp, w, color="#c0392b", label="Decel-gated co-contraction")
-axR.axhline(sub_base.mean(), color="0.4", ls="--", lw=1)
-axR.axhline(sub_imp.mean(), color="#c0392b", ls="--", lw=1)
-axR.set_xticks(x); axR.set_xticklabels(kept, fontsize=9, rotation=45)
-axR.set_ylabel("overall correlation $r$ (mean over 4 muscles)")
-axR.set_title(f"Per-subject: mean $r$ {sub_base.mean():.2f}$\\to${sub_imp.mean():.2f}, "
-              f"{n_imp}/{len(kept)} improve", fontsize=11)
-axR.grid(axis="y", ls="--", alpha=.3); axR.legend(fontsize=8, loc="upper right")
+axB.bar(x - w/2, sub_base, w, color="0.6", label="Baseline (effort-min)")
+axB.bar(x + w/2, sub_imp, w, color="#c0392b", label="Decel-gated co-contraction")
+axB.axhline(sub_base.mean(), color="0.4", ls="--", lw=1)
+axB.axhline(sub_imp.mean(), color="#c0392b", ls="--", lw=1)
+axB.set_xticks(x); axB.set_xticklabels(kept, fontsize=8, rotation=45)
+axB.set_ylabel("overall $r$ (mean over 4 muscles)", fontsize=9)
+axB.set_title(f"(b) Per-subject: mean $r$ {sub_base.mean():.2f}$\\to${sub_imp.mean():.2f}, "
+              f"{n_imp}/{len(kept)} improve", fontsize=10)
+axB.grid(axis="y", ls="--", alpha=.3); axB.legend(fontsize=7.5, loc="upper right")
 
 fig.tight_layout()
 fig.savefig(OUT, bbox_inches="tight")

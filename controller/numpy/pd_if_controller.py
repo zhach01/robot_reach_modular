@@ -100,6 +100,12 @@ class PDIFParams:
     # Internal force (co-contraction) - typically not needed with good tracking
     enable_internal_force: bool = False
     cocon_level: float = 0.03
+    # Velocity / deceleration-gated co-contraction (EMG-experiment extension):
+    # effective level = cocon_level + cocon_vel_gain * gate, gate in [0,1] rising
+    # with joint speed, optionally concentrated in the braking phase.
+    cocon_vel_gain: float = 0.0
+    cocon_vel_ref: float = 2.0
+    cocon_decel_only: bool = False
 
     # --- Singularity safety (same protection as the sliding-mode controller) ---
     # Blend to a joint-space fallback on cond(J) near the full-extension Jacobian
@@ -326,9 +332,21 @@ class PDIFController:
         F_des, mus_diag = solve_muscle_forces(tau_des, R, Fmax_vec, eta, self.mp)
         
         # === Optional co-contraction ===
+        # Default (cocon_vel_gain == 0.0) reproduces the original Copy-2 constant
+        # behaviour EXACTLY. The velocity/deceleration-gated extension (used only
+        # for the EMG experiments) is opt-in via cocon_vel_gain > 0.
         if self.p.enable_internal_force:
             a_min = float(getattr(self.env.muscle, "min_activation", 0.02))
-            cocon = np.full(F_des.shape[0], self.p.cocon_level)
+            if self.p.cocon_vel_gain == 0.0:
+                cocon_lvl = self.p.cocon_level                     # original Copy-2 behaviour
+            else:
+                gate = float(np.clip(np.linalg.norm(qd) / max(self.p.cocon_vel_ref, 1e-6), 0.0, 1.0))
+                if self.p.cocon_decel_only:
+                    nx, na = np.linalg.norm(xd), np.linalg.norm(xdd_d_g)
+                    decel = float(max(0.0, -np.dot(xd, xdd_d_g)) / (nx * na + 1e-9))
+                    gate = gate * decel
+                cocon_lvl = self.p.cocon_level + self.p.cocon_vel_gain * gate
+            cocon = np.full(F_des.shape[0], cocon_lvl)
             af_cocon = active_force_from_activation(cocon, lenvel, self.env.muscle)
             F_cocon = Fmax_vec * af_cocon
             F_des = F_des + eta2 * F_cocon
