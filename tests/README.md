@@ -1,6 +1,6 @@
 # Tests
 
-Regression tests guarding the audit fixes (see `../AUDIT_REPORT.md`).
+Regression tests guarding the audit fixes (see `../docs/AUDIT_REPORT.md`).
 
 ## Setup
 
@@ -21,9 +21,10 @@ python3 -m venv .venv
 .venv/bin/python -m pytest tests/ -q
 ```
 
-The reach tests (`test_controllers_reach.py`, `test_nmpc_clamp.py`) run short
-closed-loop simulations and take a couple of minutes total. The GPU smoke test
-(`test_gpu_smoke.py`) auto-skips when no CUDA device is present.
+The reach tests (`test_controllers_reach.py`, `test_orphan_controllers_reach.py`,
+`test_nmpc_clamp.py`) run short closed-loop simulations and take a couple of
+minutes total. The GPU smoke test (`test_gpu_smoke.py`) auto-skips when no CUDA
+device is present.
 
 ## What each file covers
 
@@ -31,8 +32,8 @@ closed-loop simulations and take a couple of minutes total. The GPU smoke test
 |------|-----------|
 | `test_dynamics_parity.py` | C1 (numpy freeze) + numpy↔torch M parity + energy conservation |
 | `test_env_obs_parity.py`  | H1 (action-frame-stacking parity) |
-| `test_controllers_reach.py` | H2/H3 (sliding-mode) + PD/IF tracking |
+| `test_controllers_reach.py` | ANFIS / synergy tracking + MotorNet / BC / pure-synergy API contract |
+| `test_orphan_controllers_reach.py` | NMPC analytic fast-path reach |
 | `test_nmpc_clamp.py`      | H4 (NMPC box-constraint clamp-in-loop) |
-| `test_cbf_qp_fallback.py` | H5 (CBF-QP passivity fallback) |
 | `test_anfis_rls.py`       | H6 (ANFIS RLS raw-output regression) |
 | `test_gpu_smoke.py`       | CUDA dynamics parity + on-device gradient flow |

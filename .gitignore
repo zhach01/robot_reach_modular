@@ -36,3 +36,7 @@ synergy/training/
 synergy_model.npz
 results/
 _run_capture.py
+
+# Local editor / tool config
+.claude/
+.vscode/

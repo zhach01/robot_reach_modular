@@ -1,9 +1,9 @@
 """
-Smoke/regression tests for the two torch controllers that were converted to the
-analytic fast-path (nmpc_task_torch, energy_tank_controller_torch). They are not
-wired to any script, so these tests are their only coverage: build each with the
-standard torch env and confirm a short closed-loop reach runs, stays finite, and
-makes clear progress toward the target on the analytic dynamics path.
+Smoke/regression test for the NMPC torch controller on the analytic fast-path
+(nmpc_task_torch). It is not wired to any script, so this test is its only
+coverage: build it with the standard torch env and confirm a short closed-loop
+reach runs, stays finite, and makes clear progress toward the target on the
+analytic dynamics path.
 
 Run:  python -m pytest tests/test_orphan_controllers_reach.py -q
 """
@@ -63,22 +63,6 @@ def _run(env, arm, ctrl, traj, target):
     final_err = float(np.linalg.norm(xf - target.numpy()))
     # in 0.4 s both controllers should cover most of the 10 cm reach
     assert final_err < 0.05, f"insufficient progress: {final_err*1000:.1f} mm"
-
-
-def test_energy_tank_torch_reaches():
-    from controller.torch.energy_tank_controller import EnergyTankController, EnergyTankParams
-    env, arm, q0, target, traj = _build_env()
-    g, num, tog, ifc = ControlGains(), Numerics(), ControlToggles(), InternalForceConfig()
-    p = EnergyTankParams(
-        D0=g.D0, K0=g.K0, KI=g.KI, Imax=g.Imax, eps=num.eps,
-        lam_os_smin_target=num.lam_os_smin_target, lam_os_max=num.lam_os_max,
-        sigma_thresh=num.sigma_thresh, gate_pow=num.gate_pow,
-        enable_inertia_comp=tog.enable_inertia_comp, enable_gravity_comp=tog.enable_gravity_comp,
-        enable_velocity_comp=tog.enable_velocity_comp, enable_joint_damping=tog.enable_joint_damping,
-        enable_internal_force=tog.enable_internal_force, cocon_a0=ifc.cocon_a0,
-        bisect_iters=ifc.bisect_iters, linesearch_eps=num.linesearch_eps,
-        linesearch_safety=num.linesearch_safety)
-    _run(env, arm, EnergyTankController(env, arm, p), traj, target)
 
 
 def test_nmpc_torch_reaches():

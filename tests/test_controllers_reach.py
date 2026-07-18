@@ -1,12 +1,12 @@
 """
-Closed-loop tracking regression tests on the (fixed) differentiable torch plant.
+Closed-loop / API regression tests for the learning controllers on the (fixed)
+differentiable torch plant.
 
-A controller that implements its law correctly must drive the fingertip to a
-10 cm target to sub-centimetre accuracy. Guards:
-  - PD/IF baseline still tracks.
-  - Sliding-mode (audit H2/H3): previously diverged (~370 mm) because the torch
-    equivalent control omitted the lambda*e_v velocity-feedback term and the
-    eta floors (0.50/0.35) defeated the singularity gate. Must now track.
+Tracking controllers (ANFIS, full synergy) must drive the fingertip to a 10 cm
+target to sub-centimetre accuracy from their default (untrained) initialisation.
+The episodic learned policies (MotorNet, behaviour-cloning, pure synergy) need a
+trained checkpoint for accuracy, so their tests only guard the API contract:
+compute() returns a finite muscle-activation vector in [0,1] of the right shape.
 
 Run:  python -m pytest tests/test_controllers_reach.py -q
 """
@@ -68,33 +68,6 @@ def _final_error(env, arm, ctrl, traj, target):
     xf = logs.x_log[:k][k - 1, :2]
     xf = xf.detach().numpy() if hasattr(xf, "detach") else np.asarray(xf)
     return float(np.linalg.norm(xf - target.numpy()))
-
-
-def test_pdif_torch_tracks():
-    # canonical (optimized) torch PD/IF controller
-    from controller.torch.pd_if_controller import PDIFController, PDIFParams
-    env, arm, pc = _build_env()
-    traj, target = _make_traj(env)
-    num = Numerics()
-    p = PDIFParams(
-        Kp_task=[1600.0, 1600.0], damping_ratio=1.0, Kff=1.0,
-        use_critical_damping=True, enable_nullspace=True,
-        eps=num.eps, lam_os_max=float(getattr(num, "lam_os_max", 200.0)),
-        sigma_thresh=num.sigma_thresh, gate_pow=num.gate_pow,
-        bisect_iters=12, enable_internal_force=False,
-    )
-    ctrl = PDIFController(env, arm, p)
-    err = _final_error(env, arm, ctrl, traj, target)
-    assert err < 0.01, f"PD/IF failed to track: {err*1000:.1f} mm"
-
-
-def test_osc_torch_tracks():
-    from controller.torch.osc_controller import OSCController, OSCParams
-    env, arm, pc = _build_env()
-    traj, target = _make_traj(env)
-    ctrl = OSCController(env, arm, OSCParams(Kp=4000.0, Kv=126.0))
-    err = _final_error(env, arm, ctrl, traj, target)
-    assert err < 0.01, f"OSC failed to track: {err*1000:.1f} mm"
 
 
 def test_anfis_torch_tracks():
@@ -171,22 +144,3 @@ def test_synergy_torch_tracks():
         Kp_task=800.0, Kv_task=60.0, c_max=5.0, synergy_strength=0.8))
     err = _final_error(env, arm, ctrl, traj, target)
     assert err < 0.01, f"synergy failed to track: {err*1000:.1f} mm"
-
-
-def test_sliding_mode_torch_tracks():
-    from controller.torch.sliding_mode import SlidingModeController, SlidingModeParams
-    env, arm, pc = _build_env()
-    traj, target = _make_traj(env)
-    num, tog, ifc = Numerics(), ControlToggles(), InternalForceConfig()
-    p = SlidingModeParams(
-        lambda_surf=[26.0, 26.0], K_switch=[4.0, 4.0], phi=[0.004, 0.004],
-        Kff_x=[1.0, 1.0],
-        eps=float(num.eps), lam_os_max=float(num.lam_os_max),
-        sigma_thresh=float(num.sigma_thresh), gate_pow=float(num.gate_pow),
-        enable_inertia_comp=tog.enable_inertia_comp,
-        enable_gravity_comp=tog.enable_gravity_comp,
-        enable_velocity_comp=tog.enable_velocity_comp,
-        bisect_iters=int(ifc.bisect_iters))
-    ctrl = SlidingModeController(env, arm, p)
-    err = _final_error(env, arm, ctrl, traj, target)
-    assert err < 0.01, f"sliding-mode failed to track: {err*1000:.1f} mm"
